@@ -1,0 +1,39 @@
+# Render blueprint: API web service + background worker. Database: Neon (set DATABASE_URL / DATABASE_DIRECT_URL).
+services:
+  - type: web
+    name: lifesphere-api
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm ci && npm run build
+    preDeployCommand: npm run db:migrate:prod
+    startCommand: node dist/main.js
+    healthCheckPath: /v1/health/ready
+    envVars:
+      - { key: NODE_ENV, value: production }
+      - { key: PROCESS_ROLE, value: api }
+      - { key: DATABASE_SSL, value: "true" }
+      - { fromGroup: lifesphere-secrets }
+  - type: worker
+    name: lifesphere-worker
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/main.js
+    envVars:
+      - { key: NODE_ENV, value: production }
+      - { key: PROCESS_ROLE, value: worker }
+      - { key: DATABASE_SSL, value: "true" }
+      - { fromGroup: lifesphere-secrets }
+envVarGroups:
+  - name: lifesphere-secrets
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: DATABASE_DIRECT_URL, sync: false }
+      - { key: JWT_SECRET, generateValue: true }
+      - { key: HASH_PEPPER, generateValue: true }
+      - { key: ENCRYPTION_KEY, sync: false }
+      - { key: WEBHOOK_SECRET, generateValue: true }
+      - { key: APP_BASE_URL, sync: false }
+      - { key: CORS_ORIGINS, sync: false }

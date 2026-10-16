@@ -1,0 +1,21 @@
+// Test configuration: isolated database, simulated providers, deterministic OTPs.
+process.env.NODE_ENV = 'test';
+process.env.PROCESS_ROLE = 'api';
+process.env.LOG_LEVEL = 'error';
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://lifesphere:lifesphere@localhost:5432/lifesphere_test';
+process.env.DATABASE_DIRECT_URL = process.env.DATABASE_URL;
+process.env.JWT_SECRET = 'test-jwt-secret-0123456789abcdef0123456789abcdef';
+process.env.HASH_PEPPER = 'test-pepper-0123456789abcdef0123456789abcdef';
+process.env.ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+process.env.OTP_DEV_ECHO = 'true';
+process.env.OTP_MAX_PER_DESTINATION_HOUR = '1000';
+process.env.OTP_MAX_PER_IP_HOUR = '100000';
+process.env.THROTTLE_DISABLED = 'true';
+process.env.GRANT_COOLOFF_MINUTES = '10';
+process.env.SMS_PROVIDER = 'mock';
+process.env.EMAIL_PROVIDER = 'mock';
+process.env.PUSH_PROVIDER = 'mock';
+process.env.STORAGE_PROVIDER = 'local';
+process.env.STORAGE_LOCAL_DIR = '/tmp/lifesphere-test-storage';
+process.env.AI_PROVIDER = 'mock';
+process.env.APP_BASE_URL = 'http://localhost:3000';

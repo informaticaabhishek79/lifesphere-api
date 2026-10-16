@@ -1,0 +1,12 @@
+# Local development: Postgres only. Run the API on the host with `npm run dev:all`.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lifesphere
+      POSTGRES_PASSWORD: lifesphere
+      POSTGRES_DB: lifesphere
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+volumes:
+  pgdata:

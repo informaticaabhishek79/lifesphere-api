@@ -5,7 +5,8 @@ import { authenticator } from 'otplib';
 import { EmailAdapter, SmsAdapter } from '../../adapters/messaging';
 import { Actor } from '../../common/auth-context';
 import { AuditService } from '../../common/audit.service';
-import { CryptoService, maskEmail, maskPhone, normalizeEmail, normalizePhone } from '../../common/crypto.service';
+import { CryptoService, maskEmail, maskPhone, normalizeEmail, normalizePhone, phoneCountry } from '../../common/crypto.service';
+import { countryFromTimezone, countryInfo, isCountryCode } from '../../common/countries';
 import { AppError, badRequest, conflict, notFound } from '../../common/errors';
 import { uuidv7 } from '../../common/ids';
 import { TokenService } from '../../common/token.service';
@@ -59,14 +60,14 @@ export class AuthService {
   }
 
   // ------------------------------------------------------------------ OTP
-  normalize(channel: 'sms' | 'email', destination: string): string {
-    const v = channel === 'sms' ? normalizePhone(destination) : normalizeEmail(destination);
+  normalize(channel: 'sms' | 'email', destination: string, country?: string | null): string {
+    const v = channel === 'sms' ? normalizePhone(destination, country ?? 'IN') : normalizeEmail(destination);
     if (!v) throw badRequest(channel === 'sms' ? 'Enter a valid mobile number' : 'Enter a valid email address', 'invalid_destination');
     return v;
   }
 
-  async requestOtp(channel: 'sms' | 'email', destination: string, purpose: Purpose, ip: string | undefined, userId?: string) {
-    const dest = this.normalize(channel, destination);
+  async requestOtp(channel: 'sms' | 'email', destination: string, purpose: Purpose, ip: string | undefined, userId?: string, country?: string | null) {
+    const dest = this.normalize(channel, destination, country);
     const destinationHash = this.crypto.hmac(`${channel}:${dest}`, 'otp-dest');
     const ipHash = ip ? this.crypto.hmac(ip, 'ip') : null;
     const hourAgo = new Date(Date.now() - 3600_000);
@@ -199,7 +200,11 @@ export class AuthService {
   private async createUserFromChallenge(ch: { channel: 'sms' | 'email'; destinationEnc: string }, dto: OtpVerifyDto): Promise<string> {
     const dest = this.crypto.decrypt(ch.destinationEnc);
     const now = new Date();
-    const timezone = dto.timezone && isValidTimeZone(dto.timezone) ? dto.timezone : 'Asia/Kolkata';
+    const country =
+      (dto.country && isCountryCode(dto.country) ? dto.country : null) ??
+      (ch.channel === 'sms' ? [phoneCountry(dest)].find(isCountryCode) ?? null : null) ??
+      countryFromTimezone(dto.timezone);
+    const timezone = dto.timezone && isValidTimeZone(dto.timezone) ? dto.timezone : countryInfo(country).timezone;
     return this.db.transaction(async (tx) => {
       const clash = await tx
         .select({ id: users.id })
@@ -221,7 +226,8 @@ export class AuthService {
         userId: u.id,
         displayName: dto.displayName!.trim().slice(0, 80),
         timezone,
-        locale: dto.locale ?? 'en-IN',
+        locale: dto.locale ?? 'en',
+        country,
       });
       await tx.insert(userPreferences).values({ userId: u.id });
       await tx.insert(consentRecords).values([
@@ -446,8 +452,9 @@ export class AuthService {
   }
 
   // ------------------------------------------------------------------ contact verification (add/change phone or email)
-  async contactVerifyRequest(actor: Actor, channel: 'sms' | 'email', destination: string, ip?: string) {
-    const dest = this.normalize(channel, destination);
+  async contactVerifyRequest(actor: Actor, channel: 'sms' | 'email', destination: string, ip?: string, country?: string) {
+    const [prof] = await this.db.select({ country: userProfiles.country }).from(userProfiles).where(eq(userProfiles.userId, actor.userId));
+    const dest = this.normalize(channel, destination, country ?? prof?.country);
     const taken = await this.db
       .select({ id: users.id })
       .from(users)

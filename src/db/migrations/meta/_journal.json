@@ -15,6 +15,13 @@
       "when": 1792129384044,
       "tag": "0001_optional_pgvector",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792170312727,
+      "tag": "0002_global",
+      "breakpoints": true
     }
   ]
 }

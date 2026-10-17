@@ -36,7 +36,6 @@ import { NotificationsService } from '../modules/notifications/notifications.ser
 import { PrivacyService } from '../modules/privacy/privacy.service';
 import { RemindersService } from '../modules/reminders/reminders.service';
 
-const TZ = 'Asia/Kolkata';
 
 /**
  * Registers job handlers and schedules in the worker process (PROCESS_ROLE=worker or both).
@@ -83,12 +82,12 @@ export class JobsService implements OnApplicationBootstrap {
     await work(JOBS.privacyDeletionSweep, () => this.privacy.runDeletionSweep());
     await work(JOBS.householdDailyTick, () => this.dailyTick());
 
-    await boss.schedule(JOBS.checkinTick, '* * * * *', {}, { tz: TZ, singletonKey: 'checkin-tick' });
-    await boss.schedule(JOBS.grantsActivate, '* * * * *', {}, { tz: TZ });
-    await boss.schedule(JOBS.heartbeat, '* * * * *', {}, { tz: TZ });
-    await boss.schedule(JOBS.retentionPurge, '30 2 * * *', {}, { tz: TZ });
-    await boss.schedule(JOBS.privacyDeletionSweep, '0 3 * * *', {}, { tz: TZ });
-    await boss.schedule(JOBS.householdDailyTick, '0 8 * * *', {}, { tz: TZ });
+    await boss.schedule(JOBS.checkinTick, '* * * * *', {}, { tz: this.env.JOBS_TIMEZONE, singletonKey: 'checkin-tick' });
+    await boss.schedule(JOBS.grantsActivate, '* * * * *', {}, { tz: this.env.JOBS_TIMEZONE });
+    await boss.schedule(JOBS.heartbeat, '* * * * *', {}, { tz: this.env.JOBS_TIMEZONE });
+    await boss.schedule(JOBS.retentionPurge, '30 2 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
+    await boss.schedule(JOBS.privacyDeletionSweep, '0 3 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
+    await boss.schedule(JOBS.householdDailyTick, '0 8 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     this.logger.log('Worker handlers and schedules registered');
   }
 
@@ -105,7 +104,7 @@ export class JobsService implements OnApplicationBootstrap {
     await fetch(this.env.WORKER_HEARTBEAT_URL, { method: 'GET', signal: AbortSignal.timeout(5000) }).catch(() => undefined);
   }
 
-  /** Daily 08:00 IST: maintenance, warranties, case follow-ups, verification expiry, monthly sharing summary. */
+  /** Daily 08:00 (JOBS_TIMEZONE): maintenance, warranties, case follow-ups, verification expiry, monthly sharing summary. */
   async dailyTick() {
     const maintenance = await this.householdTools.maintenanceTick();
     const consumer = await this.consumer.dailyReminders();
@@ -115,7 +114,7 @@ export class JobsService implements OnApplicationBootstrap {
     return { maintenance, consumer, verifications, sharingSummaries };
   }
 
-  /** Daily 02:30 IST: enforce the documented retention periods. */
+  /** Daily 02:30 (JOBS_TIMEZONE): enforce the documented retention periods. */
   async retentionPurge() {
     const now = new Date();
     const out: Record<string, number> = {};

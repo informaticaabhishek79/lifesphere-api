@@ -1,3 +1,4 @@
+import { countryInfo } from '../../common/countries';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
 import { AuditService } from '../../common/audit.service';
@@ -46,15 +47,21 @@ export class HelpService {
 
   async preferences(actor: Actor) {
     const [p] = await this.db.select().from(emergencyContactPreferences).where(eq(emergencyContactPreferences.userId, actor.userId));
-    const prefs = p ?? { userId: actor.userId, emergencyNumber: '112', primaryCallContactId: null, notifyContacts: true, shareLocationByDefault: false, defaultMessage: null };
+    const prefs = p ?? { userId: actor.userId, emergencyNumber: await this.localEmergencyNumber(actor.userId), primaryCallContactId: null, notifyContacts: true, shareLocationByDefault: false, defaultMessage: null };
     const alertRecipients = await this.policy.granteesOf(actor.userId, 'help.alerts');
     const names = alertRecipients.length ? await this.db.select({ id: userProfiles.userId, n: userProfiles.displayName }).from(userProfiles).where(inArray(userProfiles.userId, alertRecipients)) : [];
     return {
       ...prefs,
       callTargets: await this.callTargets(actor.userId, prefs.emergencyNumber, prefs.primaryCallContactId),
       alertRecipients: names.map((n) => ({ userId: n.id, displayName: n.n })),
-      disclaimer: 'LifeSphere is not an emergency service. In an emergency, call 112.',
+      disclaimer: `LifeSphere is not an emergency service. In an emergency, call ${prefs.emergencyNumber}.`,
     };
+  }
+
+  /** The main emergency number for the user's country (112 when unknown). */
+  private async localEmergencyNumber(userId: string) {
+    const [p] = await this.db.select({ country: userProfiles.country }).from(userProfiles).where(eq(userProfiles.userId, userId));
+    return countryInfo(p?.country).emergency;
   }
 
   private async callTargets(userId: string, emergencyNumber: string, primaryContactId: string | null) {
@@ -79,7 +86,7 @@ export class HelpService {
     const patch = Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined));
     await this.db
       .insert(emergencyContactPreferences)
-      .values({ userId: actor.userId, ...patch })
+      .values({ userId: actor.userId, emergencyNumber: await this.localEmergencyNumber(actor.userId), ...patch })
       .onConflictDoUpdate({ target: emergencyContactPreferences.userId, set: patch });
     return this.preferences(actor);
   }

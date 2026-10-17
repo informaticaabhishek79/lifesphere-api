@@ -14,7 +14,9 @@ import {
   purchases,
   shoppingListItems,
   shoppingLists,
+  userProfiles,
 } from '../../db/schema';
+import { countryInfo } from '../../common/countries';
 import { NotificationsService } from '../notifications/notifications.service';
 
 type Owned = { ownerUserId: string; householdId: string | null };
@@ -26,6 +28,12 @@ export class HouseholdToolsService {
     private readonly policy: PolicyService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  /** Currency of the user's country (budgets default to it). */
+  private async defaultCurrency(userId: string) {
+    const [p] = await this.db.select({ country: userProfiles.country }).from(userProfiles).where(eq(userProfiles.userId, userId));
+    return countryInfo(p?.country).currency;
+  }
 
   /** Personal items: owner only. Household items: any member. */
   private async canAccess(actor: Actor, o: Owned) {
@@ -343,7 +351,7 @@ export class HouseholdToolsService {
         category: dto.category,
         plannedAmount: String(dto.plannedAmount),
         spentAmount: String(dto.spentAmount ?? 0),
-        currency: dto.currency ?? 'INR',
+        currency: dto.currency ?? (await this.defaultCurrency(actor.userId)),
         note: dto.note,
       })
       .returning();

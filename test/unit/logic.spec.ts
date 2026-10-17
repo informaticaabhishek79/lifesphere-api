@@ -1,5 +1,6 @@
 import { sniffMime } from '../../src/modules/attachments/attachments.service';
-import { maskEmail, maskPhone, normalizeEmail, normalizePhone } from '../../src/common/crypto.service';
+import { maskEmail, maskPhone, normalizeEmail, normalizePhone, phoneCountry } from '../../src/common/crypto.service';
+import { COUNTRIES, countryFromTimezone, countryInfo, countryName, isCountryCode } from '../../src/common/countries';
 import { decodeCursor, encodeCursor } from '../../src/common/pagination';
 import { nextOccurrence, parseRule } from '../../src/common/recurrence';
 import { quietHoursEnd, zonedTimeToUtc } from '../../src/common/time';
@@ -14,6 +15,19 @@ describe('phone & email normalisation', () => {
     ['+91 98765-43210', '+919876543210'],
     ['+1 415 555 0100', '+14155550100'],
   ])('%s → %s', (input, out) => expect(normalizePhone(input)).toBe(out));
+  it.each([
+    ['07400 123456', 'GB', '+447400123456'],
+    ['01512 3456789', 'DE', '+4915123456789'],
+    ['050 123 4567', 'AE', '+971501234567'],
+    ['0412 345 678', 'AU', '+61412345678'],
+    ['(212) 555-2368', 'US', '+12125552368'],
+    ['+44 7400 123456', 'IN', '+447400123456'],
+  ])('%s in %s → %s', (input, country, out) => expect(normalizePhone(input, country)).toBe(out));
+  it('rejects landlines and invalid numbers', () => {
+    expect(normalizePhone('020 7946 0018', 'GB')).toBeNull();
+    expect(normalizePhone('12345', 'GB')).toBeNull();
+    expect(phoneCountry('+447400123456')).toBe('GB');
+  });
   it('rejects invalid Indian mobiles', () => {
     expect(normalizePhone('1234567890')).toBeNull();
     expect(normalizePhone('+915876543210')).toBeNull();
@@ -23,6 +37,26 @@ describe('phone & email normalisation', () => {
     expect(normalizeEmail('nope')).toBeNull();
     expect(maskEmail('asha@example.com')).toBe('a***@example.com');
     expect(maskPhone('+919876543210')).toBe('+91******3210');
+  });
+});
+
+describe('countries', () => {
+  it('has local defaults for every country', () => {
+    expect(Object.keys(COUNTRIES).length).toBeGreaterThan(190);
+    for (const c of Object.values(COUNTRIES)) {
+      expect(c.currency).toMatch(/^[A-Z]{3}$/);
+      expect(c.emergency).toMatch(/^\d{2,5}$/);
+      expect(() => new Intl.DateTimeFormat('en', { timeZone: c.timezone })).not.toThrow();
+    }
+  });
+  it('defaults and lookups', () => {
+    expect(countryInfo('GB')).toMatchObject({ currency: 'GBP', emergency: '999', timezone: 'Europe/London' });
+    expect(countryInfo('US').emergency).toBe('911');
+    expect(countryInfo(null)).toMatchObject({ currency: 'USD', emergency: '112', timezone: 'UTC' });
+    expect(countryFromTimezone('Asia/Calcutta')).toBe('IN');
+    expect(countryFromTimezone('Europe/Berlin')).toBe('DE');
+    expect(isCountryCode('ZZ')).toBe(false);
+    expect(countryName('AE')).toBe('United Arab Emirates');
   });
 });
 

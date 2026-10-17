@@ -1,3 +1,4 @@
+import { type CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { Inject, Injectable } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Env, ENV } from '../config/env';
@@ -53,17 +54,26 @@ export class CryptoService {
   }
 }
 
-/** Normalise an Indian or international phone number to E.164. Returns null when invalid. */
-export function normalizePhone(input: string, defaultCountry = '91'): string | null {
-  const raw = input.replace(/[\s\-().]/g, '');
-  let digits: string;
-  if (raw.startsWith('+')) digits = raw.slice(1);
-  else if (raw.startsWith('00')) digits = raw.slice(2);
-  else if (/^0?\d{10}$/.test(raw)) digits = defaultCountry + raw.replace(/^0/, '');
-  else digits = raw;
-  if (!/^\d{8,15}$/.test(digits)) return null;
-  if (digits.startsWith('91') && !/^91[6-9]\d{9}$/.test(digits)) return null;
-  return `+${digits}`;
+/**
+ * Normalise a phone number to E.164 using the full international numbering plan.
+ * Numbers without a +country prefix are read in `defaultCountry` (ISO 3166 alpha-2, e.g. "IN", "GB").
+ * Returns null when the number is not a valid mobile/fixed number for that country.
+ */
+export function normalizePhone(input: string, defaultCountry: string = 'IN'): string | null {
+  const raw = input.trim().replace(/^00/, '+');
+  const country = /^[A-Za-z]{2}$/.test(defaultCountry) ? (defaultCountry.toUpperCase() as CountryCode) : undefined;
+  const p = parsePhoneNumberFromString(raw, raw.startsWith('+') ? undefined : country);
+  if (!p || !p.isValid()) return null;
+  // Sign-in codes and alerts go by SMS, so only numbers that can be mobiles are accepted.
+  const type = p.getType();
+  if (type && type !== 'MOBILE' && type !== 'FIXED_LINE_OR_MOBILE') return null;
+  return p.number;
+}
+
+/** ISO country of an E.164 number, e.g. +447700900123 → GB. */
+export function phoneCountry(e164: string | null | undefined): string | null {
+  if (!e164) return null;
+  return parsePhoneNumberFromString(e164)?.country ?? null;
 }
 
 export function normalizeEmail(input: string): string | null {

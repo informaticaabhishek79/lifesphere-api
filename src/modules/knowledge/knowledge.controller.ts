@@ -32,14 +32,16 @@ class AssistantFeedbackDto {
 export class KnowledgeController {
   constructor(private readonly svc: KnowledgeService) {}
 
+  /** Topics of guides for your country plus general guides. */
   @Get('topics')
-  topics() {
-    return this.svc.topics();
+  async topics(@CurrentActor() actor: Actor) {
+    return this.svc.topics(await this.svc.countryOf(actor.userId));
   }
 
+  /** Guides for your country plus general guides. */
   @Get('articles')
-  search(@Query() q: KnowledgeSearchQuery) {
-    return this.svc.searchArticles(q);
+  async search(@CurrentActor() actor: Actor, @Query() q: KnowledgeSearchQuery) {
+    return this.svc.searchArticles(q, await this.svc.countryOf(actor.userId));
   }
 
   @Get('articles/:slug')

@@ -34,7 +34,7 @@ export class InviteHelper {
   }
 
   /** Resolve a target into (existing user id?, contact hash, normalised contact). */
-  async resolve(target: InviteTarget) {
+  async resolve(target: InviteTarget, inviterId?: string) {
     const given = [target.phone, target.email, target.userId].filter(Boolean).length;
     if (given !== 1) throw badRequest('Provide exactly one of phone, email or userId', 'invite_target_required');
     if (target.userId) {
@@ -43,7 +43,8 @@ export class InviteHelper {
       return { userId: u.id, contactHash: null as string | null, phone: null as string | null, email: null as string | null };
     }
     if (target.phone) {
-      const phone = normalizePhone(target.phone);
+      const [inviter] = inviterId ? await this.db.select({ country: userProfiles.country }).from(userProfiles).where(eq(userProfiles.userId, inviterId)) : [];
+      const phone = normalizePhone(target.phone, inviter?.country ?? 'IN');
       if (!phone) throw badRequest('Enter a valid mobile number', 'invalid_destination');
       const [u] = await this.db.select({ id: users.id }).from(users).where(and(eq(users.phoneE164, phone), eq(users.status, 'active')));
       return { userId: u?.id ?? null, contactHash: this.contactHash('phone', phone), phone, email: null };
@@ -145,7 +146,7 @@ export class HouseholdsService {
 
   async invite(actor: Actor, id: string, target: { phone?: string; email?: string; userId?: string; role?: 'admin' | 'member' }) {
     await this.policy.requireHouseholdAdmin(actor.userId, id);
-    const resolved = await this.invites.resolve(target);
+    const resolved = await this.invites.resolve(target, actor.userId);
     if (resolved.userId === actor.userId) throw badRequest('You are already a member', 'already_member');
     if (resolved.userId && (await this.policy.householdRole(resolved.userId, id))) throw conflict('This person is already a member', 'already_member');
     const [{ n }] = await this.db

@@ -33,8 +33,9 @@ export const WIDGET_KEYS = [
 
 export class UpdateProfileDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(80) displayName?: string;
-  @ApiPropertyOptional({ example: 'en-IN' }) @IsOptional() @IsString() @Matches(/^[a-z]{2}(-[A-Z]{2})?$/) locale?: string;
-  @ApiPropertyOptional({ example: 'Asia/Kolkata' }) @IsOptional() @IsString() @MaxLength(60) timezone?: string;
+  @ApiPropertyOptional({ example: 'en-GB' }) @IsOptional() @IsString() @Matches(/^[a-z]{2}(-[A-Z]{2})?$/) locale?: string;
+  @ApiPropertyOptional({ example: 'Europe/London' }) @IsOptional() @IsString() @MaxLength(60) timezone?: string;
+  @ApiPropertyOptional({ example: 'GB', description: 'Country of residence (ISO 3166 alpha-2)' }) @IsOptional() @Matches(/^[A-Z]{2}$/) country?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() seniorMode?: boolean;
   @ApiPropertyOptional({ description: 'Appear in community member lists and search' }) @IsOptional() @IsBoolean() discoverable?: boolean;
   @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() localityId?: string | null;
@@ -105,5 +106,6 @@ export class UpdatePreferencesDto {
 export class LocalityQuery {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) search?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) city?: string;
-  @ApiPropertyOptional({ example: '110' }) @IsOptional() @Matches(/^\d{3}$/) pincodePrefix?: string;
+  @ApiPropertyOptional({ example: '110', description: 'Start of a postal code' }) @IsOptional() @Matches(/^[A-Za-z0-9]{1,5}$/) pincodePrefix?: string;
+  @ApiPropertyOptional({ example: 'IN', description: 'Country (default: your own; "all" for every country)' }) @IsOptional() @Matches(/^([A-Z]{2}|all)$/) country?: string;
 }

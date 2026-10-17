@@ -28,7 +28,7 @@ export class AuthController {
   @Post('otp/request')
   @HttpCode(200)
   requestOtp(@Body() dto: OtpRequestDto, @Req() req: Request) {
-    return this.auth.requestOtp(dto.channel, dto.destination, 'login', req.ip);
+    return this.auth.requestOtp(dto.channel, dto.destination, 'login', req.ip, undefined, dto.country);
   }
 
   /** Verifies the code. New accounts must include displayName, ageConfirmed=true and acceptedPolicyVersion. */
@@ -100,7 +100,7 @@ export class AuthController {
   @Post('contact/request')
   @HttpCode(200)
   contactRequest(@CurrentActor() actor: Actor, @Body() dto: ContactVerifyRequestDto, @Req() req: Request) {
-    return this.auth.contactVerifyRequest(actor, dto.channel, dto.destination, req.ip);
+    return this.auth.contactVerifyRequest(actor, dto.channel, dto.destination, req.ip, dto.country);
   }
 
   @RequireRecentAuth(10)

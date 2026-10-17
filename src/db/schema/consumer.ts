@@ -13,6 +13,8 @@ export const officialChannels = pgTable(
     kind: officialChannelKind('kind').notNull(),
     name: varchar('name', { length: 160 }).notNull(),
     jurisdiction: varchar('jurisdiction', { length: 120 }).notNull().default('India'),
+    /** ISO country this channel serves; null = available everywhere. */
+    country: varchar('country', { length: 2 }),
     /** Optional: categories this channel handles, e.g. ['ecommerce','telecom'] or ['streetlight']. */
     topics: text('topics').array(),
     url: varchar('url', { length: 400 }),

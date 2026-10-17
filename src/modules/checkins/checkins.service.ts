@@ -127,7 +127,7 @@ export class CheckinsService {
       timeLocal: dto.timeLocal ?? null,
       daysOfWeek: dto.daysOfWeek ?? null,
       oneOffAt: dto.oneOffAt ? new Date(dto.oneOffAt) : null,
-      timezone: dto.timezone ?? profile?.tz ?? 'Asia/Kolkata',
+      timezone: dto.timezone ?? profile?.tz ?? 'UTC',
     };
     const [s] = await this.db
       .insert(checkInSchedules)

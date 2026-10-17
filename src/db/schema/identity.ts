@@ -170,8 +170,8 @@ export const localities = pgTable(
     city: varchar('city', { length: 80 }).notNull(),
     state: varchar('state', { length: 80 }).notNull(),
     country: varchar('country', { length: 2 }).notNull().default('IN'),
-    /** First 3 digits of PIN code; never a full address. */
-    pincodePrefix: varchar('pincode_prefix', { length: 3 }),
+    /** Start of the postal code (India: first 3 PIN digits; UK: outward code…); never a full address. */
+    pincodePrefix: varchar('pincode_prefix', { length: 5 }),
     /** Centroid rounded to ~1 km (2 decimals). */
     lat: varchar('lat', { length: 12 }),
     lng: varchar('lng', { length: 12 }),
@@ -188,8 +188,10 @@ export const userProfiles = pgTable('user_profiles', {
     .references(() => users.id, { onDelete: 'cascade' }),
   displayName: varchar('display_name', { length: 80 }).notNull(),
   avatarAttachmentId: uuid('avatar_attachment_id'),
-  locale: varchar('locale', { length: 10 }).notNull().default('en-IN'),
-  timezone: varchar('timezone', { length: 60 }).notNull().default('Asia/Kolkata'),
+  locale: varchar('locale', { length: 10 }).notNull().default('en'),
+  timezone: varchar('timezone', { length: 60 }).notNull().default('UTC'),
+  /** ISO 3166-1 alpha-2. Drives defaults: currency, emergency number, phone parsing, local content. */
+  country: varchar('country', { length: 2 }),
   seniorMode: boolean('senior_mode').notNull().default(false),
   /** When false the profile is hidden from community search and member lists of public groups. */
   discoverable: boolean('discoverable').notNull().default(false),

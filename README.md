@@ -10,9 +10,10 @@ This repository is the **backend**: the API and its background worker. The web a
 | | |
 |---|---|
 | Stack | Node 22, NestJS 11, TypeScript, PostgreSQL 15+ (Drizzle ORM), pg-boss job queue |
-| API | 312 operations on 232 paths, versioned under `/v1`, OpenAPI at `/docs` |
-| Database | 86 tables (82 `public`, 4 `auth`), 2 migrations, idempotent seed |
-| Tests | 118 automated tests in 7 suites, run against a real Postgres |
+| API | 313 operations on 233 paths, versioned under `/v1`, OpenAPI at `/docs` |
+| Database | 86 tables (82 `public`, 4 `auth`), 3 migrations, idempotent seed |
+| Tests | 135 automated tests in 8 suites, run against a real Postgres |
+| Countries | Any country: phone numbers, emergency number, currency, time zone and language per country; official complaint channels and guides tagged by country |
 | Processes | `api` (HTTP) and `worker` (reminders, check-in escalation, notifications, exports, deletion, retention) |
 
 ## Run it locally (Windows, macOS, Linux)
@@ -29,6 +30,8 @@ npm run dev:all                            # API + worker together on http://loc
 ```
 
 `npm run setup` never overwrites secrets you already set; run it again any time. Without `--db` it keeps the `DATABASE_URL` in `.env`.
+
+**Updating an existing database?** Run `npm run db:migrate` and then `npm run db:seed` again after pulling new code. Both are safe to repeat; the seed only adds or updates its own rows.
 
 Open `http://localhost:4000/docs`. In development `OTP_DEV_ECHO=true` returns the sign-in code in the response (`devCode`), and every SMS, email, push and AI call is **simulated** and labelled as such (`GET /v1/health/ready` lists which integrations are simulated).
 
@@ -54,7 +57,7 @@ Sign in: `POST /v1/auth/otp/request` → `POST /v1/auth/otp/verify` (new account
 | Area | Endpoints | Highlights |
 |---|---|---|
 | Auth | `/auth/*` | Phone/email OTP, rotating refresh tokens, per-device sessions, TOTP + recovery codes, step-up re-auth for sensitive actions |
-| Me | `/me/*`, `/localities`, `/users/:id/card` | Profile, senior mode, accessibility, quiet hours, lock-screen detail, dashboard widgets, own activity log |
+| Me | `/me/*`, `/localities`, `/countries`, `/users/:id/card` | Profile with country, senior mode, accessibility, quiet hours, lock-screen detail, dashboard widgets, own activity log |
 | Privacy | `/privacy/*` | Purpose-specific consents with immediate withdrawal effects, data export, account deletion with 7-day grace, data inventory |
 | LifeOS | `/tasks`, `/task-categories`, `/reminders`, `/calendar/events` | Recurring tasks (RRULE), assignments, reminders via the queue, shared calendars and visits |
 | Household | `/households`, `/lists`, `/inventory`, `/budgets` | Members and roles, chores, shared grocery lists, announcements, inventory with maintenance schedules, optional manual budget |
@@ -67,6 +70,16 @@ Sign in: `POST /v1/auth/otp/request` → `POST /v1/auth/otp/verify` (new account
 | Notifications | `/notifications/*` | Inbox, per-category channel preferences, device registration (FCM / Web Push), provider delivery webhooks |
 
 Full list: [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md).
+
+## Countries and languages
+
+- **Phone numbers** are read with the country the person picks at sign-in (any country; numbers are checked to be real mobile numbers). Without a country, `+91` numbers are assumed for 10-digit input, so existing Indian users are unaffected.
+- **A person's country** (`user_profiles.country`) comes from sign-up (picked country → phone number → time zone) and can be changed in settings. It sets the default **emergency number** for the help button, the **budget currency**, the **time zone** suggestion, the official **complaint channels** and the **guides** the assistant uses. Channels and guides with no country apply everywhere.
+- `GET /v1/countries` lists every supported country with its dialling code, currency, emergency number, time zone and main language. The table is in `src/common/countries.ts`; check emergency numbers for each market before launch.
+- **Localities** are seeded for India plus a starter set in the UK, US, Canada, Australia, UAE, Saudi Arabia, Singapore, Germany, France, Spain and Bangladesh; add more in the staff console (Catalogue).
+- **SMS:** `SMS_PROVIDER=msg91` (India), `twilio` (worldwide), or `routed` (`+91` via MSG91, everything else via Twilio). Twilio needs `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`.
+- **Daily jobs** (digest, retention) run at 08:00 / 02:30 in `JOBS_TIMEZONE` (default `UTC`; set `Asia/Kolkata` to keep the old India timing).
+- The assistant and complaint drafts are told the person's country, emergency number and language.
 
 ## Rules the code enforces
 
@@ -82,7 +95,7 @@ Full list: [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md).
 
 `render.yaml` in this repository defines `lifesphere-api` (web) and `lifesphere-worker` (background worker), both in Singapore. Set the `lifesphere-secrets` group: Neon pooled URL as `DATABASE_URL`, direct URL as `DATABASE_DIRECT_URL`, `DATABASE_SSL=true`, a 32-byte base64 `ENCRYPTION_KEY`, `APP_BASE_URL`, `CORS_ORIGINS`. Migrations run as the pre-deploy step. Production refuses to start with dev shortcuts (`OTP_DEV_ECHO`, fixed OTP, default webhook secret, disabled throttling, combined process role).
 
-Before real users: SMS DLT templates and MSG91 keys, Resend (paid Render plan for outbound mail), VAPID keys for web push, R2 bucket for attachments, `WORKER_HEARTBEAT_URL` monitor, privacy notice and grievance officer in `app_config.privacy_notice`, legal review, penetration test.
+Before real users: SMS keys (MSG91 with DLT templates for India, Twilio elsewhere), Resend (paid Render plan for outbound mail), VAPID keys for web push, R2 bucket for attachments, `WORKER_HEARTBEAT_URL` monitor, privacy notice and grievance officer in `app_config.privacy_notice`, legal review for each market you open (India DPDP, EU/UK GDPR, US state laws…), native-speaker review of translations, penetration test.
 
 ## Known limitations
 

@@ -1,6 +1,6 @@
 # LifeSphere API — endpoint inventory
 
-Generated from the OpenAPI document. 312 operations across 232 paths. All paths are under `/v1`; interactive docs at `/docs`, spec at `/docs/openapi.json`.
+Generated from the OpenAPI document. 313 operations across 233 paths. All paths are under `/v1`; interactive docs at `/docs`, spec at `/docs/openapi.json`.
 
 | Area | Operations |
 |---|---|
@@ -15,7 +15,7 @@ Generated from the OpenAPI document. 312 operations across 232 paths. All paths 
 | community | 38 |
 | consumer | 22 |
 | contacts | 10 |
-| directory | 2 |
+| directory | 3 |
 | health | 2 |
 | help | 9 |
 | home-inventory | 10 |
@@ -271,6 +271,7 @@ Generated from the OpenAPI document. 312 operations across 232 paths. All paths 
 
 | Method | Path | Notes |
 |---|---|---|
+| GET | `/v1/countries` |  |
 | GET | `/v1/localities` |  |
 | GET | `/v1/users/{id}/card` |  |
 

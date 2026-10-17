@@ -171,7 +171,7 @@ export class NotificationsService {
     }
 
     const quietEnd =
-      input.critical || prefs.bypassQuietHours ? null : quietHoursEnd(new Date(), ctx.quietStart, ctx.quietEnd, ctx.tz ?? 'Asia/Kolkata');
+      input.critical || prefs.bypassQuietHours ? null : quietHoursEnd(new Date(), ctx.quietStart, ctx.quietEnd, ctx.tz ?? 'UTC');
 
     const wanted = new Set(input.channels ?? ['push']);
     const channels: Exclude<Channel, 'in_app'>[] = [];

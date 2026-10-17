@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
+import { forCountry } from '../../common/countries';
 import { AuditService } from '../../common/audit.service';
 import { Actor } from '../../common/auth-context';
 import { CryptoService } from '../../common/crypto.service';
@@ -637,14 +638,14 @@ export class CommunityService {
       .insert(civicIssues)
       .values({ reporterId: actor.userId, category: dto.category as 'other', description: dto.description, locationText: dto.locationText, localityId: dto.localityId ?? profile?.l ?? null, officialChannelId: dto.officialChannelId })
       .returning();
-    return { ...i, suggestedChannels: await this.suggestChannels(dto.category), notice: 'This is your record. Submit it on the official channel, then add the reference number you receive.' };
+    return { ...i, suggestedChannels: await this.suggestChannels(dto.category, await this.policy.countryOf(actor.userId)), notice: 'This is your record. Submit it on the official channel, then add the reference number you receive.' };
   }
 
-  async suggestChannels(category: string) {
+  async suggestChannels(category: string, country?: string | null) {
     return this.db
       .select()
       .from(officialChannels)
-      .where(and(eq(officialChannels.active, true), inArray(officialChannels.kind, ['civic', 'government']), or(sql`${category} = any(${officialChannels.topics})`, isNull(officialChannels.topics))))
+      .where(and(eq(officialChannels.active, true), forCountry(officialChannels.country, country), inArray(officialChannels.kind, ['civic', 'government']), or(sql`${category} = any(${officialChannels.topics})`, isNull(officialChannels.topics))))
       .limit(10);
   }
 
@@ -656,7 +657,7 @@ export class CommunityService {
 
   async civicGet(actor: Actor, id: string) {
     const i = await this.civic(actor, id);
-    return { ...i, suggestedChannels: await this.suggestChannels(i.category) };
+    return { ...i, suggestedChannels: await this.suggestChannels(i.category, await this.policy.countryOf(actor.userId)) };
   }
 
   /** The user records that THEY reported it on an official channel, with the reference they received. */

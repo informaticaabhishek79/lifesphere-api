@@ -51,10 +51,17 @@ const schema = z
     OTP_MAX_PER_DESTINATION_HOUR: z.coerce.number().int().default(5),
     OTP_MAX_PER_IP_HOUR: z.coerce.number().int().default(30),
 
+    /** Time zone for the daily background jobs (maintenance reminders, retention). Per-user notifications still respect each person's quiet hours. */
+    JOBS_TIMEZONE: z.string().default('UTC'),
     GRANT_COOLOFF_MINUTES: z.coerce.number().int().min(0).default(10),
     STAFF_REQUIRE_MFA: bool.default(true),
 
-    SMS_PROVIDER: z.enum(['mock', 'msg91']).default('mock'),
+    /** mock | msg91 (India) | twilio (worldwide) | routed (+91 via MSG91, everything else via Twilio) */
+    SMS_PROVIDER: z.enum(['mock', 'msg91', 'twilio', 'routed']).default('mock'),
+    TWILIO_ACCOUNT_SID: z.string().optional(),
+    TWILIO_AUTH_TOKEN: z.string().optional(),
+    TWILIO_FROM: z.string().optional(),
+    TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
     MSG91_AUTH_KEY: z.string().optional(),
     MSG91_SENDER_ID: z.string().optional(),
     MSG91_OTP_TEMPLATE_ID: z.string().optional(),
@@ -117,8 +124,10 @@ const schema = z
       if (env.PROCESS_ROLE === 'both')
         ctx.addIssue({ code: 'custom', path: ['PROCESS_ROLE'], message: 'run api and worker as separate processes in production' });
     }
-    if (env.SMS_PROVIDER === 'msg91' && !env.MSG91_AUTH_KEY)
-      ctx.addIssue({ code: 'custom', path: ['MSG91_AUTH_KEY'], message: 'required when SMS_PROVIDER=msg91' });
+    if ((env.SMS_PROVIDER === 'msg91' || env.SMS_PROVIDER === 'routed') && !env.MSG91_AUTH_KEY)
+      ctx.addIssue({ code: 'custom', path: ['MSG91_AUTH_KEY'], message: `required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
+    if ((env.SMS_PROVIDER === 'twilio' || env.SMS_PROVIDER === 'routed') && !(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID)))
+      ctx.addIssue({ code: 'custom', path: ['TWILIO_ACCOUNT_SID'], message: `Twilio account SID, auth token and a sender are required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
     if (env.EMAIL_PROVIDER === 'resend' && !env.RESEND_API_KEY)
       ctx.addIssue({ code: 'custom', path: ['RESEND_API_KEY'], message: 'required when EMAIL_PROVIDER=resend' });
     if (env.PUSH_PROVIDER === 'fcm' && !env.FCM_SERVICE_ACCOUNT_JSON)

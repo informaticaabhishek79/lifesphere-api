@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Actor, CurrentActor } from '../../common/auth-context';
+import { Actor, CurrentActor, Public } from '../../common/auth-context';
+import { COUNTRIES } from '../../common/countries';
+import { getCountryCallingCode, type CountryCode } from 'libphonenumber-js/max';
 import { CursorQuery } from '../../common/pagination';
 import { LocalityQuery, UpdatePreferencesDto, UpdateProfileDto } from './me.dto';
 import { MeService } from './me.service';
@@ -49,8 +51,26 @@ export class DirectoryController {
 
   /** Approximate localities (neighbourhood level) for discovery. Never a precise address. */
   @Get('localities')
-  localities(@Query() q: LocalityQuery) {
-    return this.me.localities(q);
+  localities(@CurrentActor() actor: Actor, @Query() q: LocalityQuery) {
+    return this.me.localities(q, actor);
+  }
+
+  /**
+   * Every supported country with its calling code and local defaults (currency, emergency number, time zone,
+   * language). Public: the sign-in screen needs it. Names are not included — render them with Intl.DisplayNames.
+   */
+  @Public()
+  @Get('countries')
+  countries() {
+    return Object.values(COUNTRIES).map((c) => {
+      let dialCode: string | null = null;
+      try {
+        dialCode = `+${getCountryCallingCode(c.code as CountryCode)}`;
+      } catch {
+        dialCode = null;
+      }
+      return { ...c, dialCode };
+    });
   }
 
   @Get('users/:id/card')

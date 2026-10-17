@@ -10,6 +10,7 @@ import {
   taskAssignments,
   trustedContacts,
   userBlocks,
+  userProfiles,
 } from '../db/schema';
 import { notFound } from './errors';
 
@@ -50,6 +51,12 @@ export class PolicyService {
   }
 
   /** True if `grantorId` has an effective grant of `scope` to `granteeId`. */
+  /** The user's country of residence (ISO alpha-2), or null when not set. */
+  async countryOf(userId: string): Promise<string | null> {
+    const [p] = await this.db.select({ c: userProfiles.country }).from(userProfiles).where(eq(userProfiles.userId, userId));
+    return p?.c ?? null;
+  }
+
   async hasGrant(granteeId: string, grantorId: string, scope: GrantScope, tx: DbOrTx = this.db): Promise<boolean> {
     if (granteeId === grantorId) return true;
     const [row] = await tx

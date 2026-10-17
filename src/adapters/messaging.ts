@@ -8,7 +8,11 @@ export type DeliveryResult =
   | { status: 'simulated'; provider: 'mock'; providerMessageId: string }
   | { status: 'failed'; provider: string; error: string; permanent?: boolean };
 
-/** Template keys map to provider-approved templates (DLT in India). Only template variables are sent. */
+/**
+ * Template keys. MSG91 (India) sends provider-approved DLT templates with variables only; Twilio (rest of
+ * the world) sends the rendered text below. With SMS_PROVIDER=routed, +91 numbers go through MSG91 and all
+ * other numbers through Twilio.
+ */
 export type SmsTemplate = 'otp' | 'alert';
 
 /**
@@ -23,7 +27,9 @@ export class SmsAdapter {
   constructor(@Inject(ENV) private readonly env: Env) {}
 
   async send(toE164: string, template: SmsTemplate, vars: Record<string, string>): Promise<DeliveryResult> {
-    if (this.env.SMS_PROVIDER === 'mock') {
+    const provider = this.env.SMS_PROVIDER === 'routed' ? (toE164.startsWith('+91') ? 'msg91' : 'twilio') : this.env.SMS_PROVIDER;
+    if (provider === 'twilio') return this.sendTwilio(toE164, template, vars);
+    if (provider === 'mock') {
       simulatedOutbox.push({ channel: 'sms', to: toE164, template, vars, at: new Date() });
       if (simulatedOutbox.length > 500) simulatedOutbox.shift();
       this.logger.log(`[SIMULATED] sms template=${template} to=${toE164.slice(0, 3)}***${toE164.slice(-2)}`);
@@ -50,6 +56,29 @@ export class SmsAdapter {
       return { status: 'sent', provider: 'msg91', providerMessageId: body.message };
     } catch (e) {
       return { status: 'failed', provider: 'msg91', error: (e as Error).message.slice(0, 280) };
+    }
+  }
+
+  private async sendTwilio(toE164: string, template: SmsTemplate, vars: Record<string, string>): Promise<DeliveryResult> {
+    const sid = this.env.TWILIO_ACCOUNT_SID;
+    const token = this.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) return { status: 'failed', provider: 'twilio', error: 'Twilio is not configured', permanent: true };
+    const body = template === 'otp' ? `${vars.otp} is your LifeSphere code. It expires in 10 minutes. Never share it.` : (vars.var1 ?? '').slice(0, 300);
+    const form = new URLSearchParams({ To: toE164, Body: body });
+    if (this.env.TWILIO_MESSAGING_SERVICE_SID) form.set('MessagingServiceSid', this.env.TWILIO_MESSAGING_SERVICE_SID);
+    else form.set('From', this.env.TWILIO_FROM ?? '');
+    try {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: 'POST',
+        headers: { authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' },
+        body: form,
+        signal: AbortSignal.timeout(10_000),
+      });
+      const out = (await res.json().catch(() => ({}))) as { sid?: string; message?: string; code?: number };
+      if (!res.ok) return { status: 'failed', provider: 'twilio', error: `HTTP ${res.status}: ${out.message ?? 'error'}`.slice(0, 280), permanent: res.status === 400 };
+      return { status: 'sent', provider: 'twilio', providerMessageId: out.sid };
+    } catch (e) {
+      return { status: 'failed', provider: 'twilio', error: (e as Error).message.slice(0, 280) };
     }
   }
 }

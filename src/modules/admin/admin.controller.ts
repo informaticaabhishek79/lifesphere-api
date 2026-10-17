@@ -106,7 +106,7 @@ class LocalityUpsertDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(80) city: string;
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(80) state: string;
   @ApiPropertyOptional({ example: 'IN' }) @IsOptional() @Matches(/^[A-Z]{2}$/) country?: string;
-  @ApiPropertyOptional({ example: '110' }) @IsOptional() @Matches(/^\d{3}$/) pincodePrefix?: string;
+  @ApiPropertyOptional({ example: '110', description: 'Start of the postal code (e.g. 3 PIN digits, UK outward code)' }) @IsOptional() @Matches(/^[A-Za-z0-9]{1,5}$/) pincodePrefix?: string;
   @ApiPropertyOptional({ description: 'Rounded to 2 decimals (~1 km)' }) @IsOptional() @Matches(/^-?\d{1,3}(\.\d+)?$/) lat?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(/^-?\d{1,3}(\.\d+)?$/) lng?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
@@ -116,6 +116,7 @@ class OfficialChannelDto {
   @ApiProperty({ enum: ['consumer', 'civic', 'government', 'helpline'] }) @IsIn(['consumer', 'civic', 'government', 'helpline']) kind: 'consumer' | 'civic' | 'government' | 'helpline';
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(160) name: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) jurisdiction?: string;
+  @ApiPropertyOptional({ example: 'IN', description: 'Country served; leave empty for every country', nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @Matches(/^[A-Z]{2}$/) country?: string | null;
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsString({ each: true }) @ArrayMaxSize(30) topics?: string[];
   @ApiPropertyOptional() @IsOptional() @IsUrl({ protocols: ['https', 'http'], require_protocol: true }) @MaxLength(400) url?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) phone?: string;
@@ -170,6 +171,7 @@ class KnowledgeArticleDto {
   @ApiPropertyOptional() @IsOptional() @IsUrl({ protocols: ['https', 'http'], require_protocol: true }) canonicalUrl?: string;
   @ApiProperty({ example: 'consumer_complaints' }) @IsString() @MinLength(2) @MaxLength(60) topic: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(10) language?: string;
+  @ApiPropertyOptional({ example: 'IN', description: 'Country the guide applies to; leave empty for general guidance' }) @IsOptional() @Matches(/^[A-Z]{2}$/) country?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) publishedOn?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) lastReviewedOn?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) disclaimer?: string;
@@ -181,6 +183,7 @@ class UpdateKnowledgeArticleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200000) body?: string;
   @ApiPropertyOptional() @IsOptional() @IsUrl({ protocols: ['https', 'http'], require_protocol: true }) canonicalUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) topic?: string;
+  @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @Matches(/^[A-Z]{2}$/) country?: string | null;
   @ApiPropertyOptional() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) lastReviewedOn?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) disclaimer?: string;
   @ApiPropertyOptional({ enum: ['draft', 'published', 'archived'] }) @IsOptional() @IsIn(['draft', 'published', 'archived']) status?: 'draft' | 'published' | 'archived';

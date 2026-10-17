@@ -7,6 +7,7 @@ import { badRequest, notFound } from '../../common/errors';
 import { CursorQuery, keyset, lim, pageOf } from '../../common/pagination';
 import { PolicyService } from '../../common/policy.service';
 import { addDays, isValidTimeZone, localParts, zonedTimeToUtc } from '../../common/time';
+import { countryInfo, isCountryCode } from '../../common/countries';
 import { Database, DB } from '../../db/db';
 import {
   accessGrants,
@@ -97,10 +98,13 @@ export class MeService {
             avatarAttachmentId: profile.avatarAttachmentId,
             locale: profile.locale,
             timezone: profile.timezone,
+            country: profile.country,
+            /** Local defaults for the user's country (currency, emergency number…). */
+            countryDefaults: countryInfo(profile.country),
             seniorMode: profile.seniorMode,
             discoverable: profile.discoverable,
             bio: profile.bio,
-            locality: locality ? { id: locality.id, name: locality.name, city: locality.city, state: locality.state } : null,
+            locality: locality ? { id: locality.id, name: locality.name, city: locality.city, state: locality.state, country: locality.country } : null,
           }
         : null,
       preferences: prefs ? this.prefsOut(prefs) : null,
@@ -126,6 +130,7 @@ export class MeService {
 
   async updateProfile(actor: Actor, dto: UpdateProfileDto) {
     if (dto.timezone && !isValidTimeZone(dto.timezone)) throw badRequest('Unknown time zone', 'invalid_timezone');
+    if (dto.country && !isCountryCode(dto.country)) throw badRequest('Unknown country', 'invalid_country');
     if (dto.localityId) {
       const [l] = await this.db.select({ id: localities.id }).from(localities).where(and(eq(localities.id, dto.localityId), eq(localities.active, true)));
       if (!l) throw notFound('Locality');
@@ -173,7 +178,7 @@ export class MeService {
     await this.ensureRows(actor.userId);
     const [prefs] = await this.db.select().from(userPreferences).where(eq(userPreferences.userId, actor.userId));
     const [profile] = await this.db.select().from(userProfiles).where(eq(userProfiles.userId, actor.userId));
-    const tz = profile?.timezone ?? 'Asia/Kolkata';
+    const tz = profile?.timezone ?? 'UTC';
     const widgets = (prefs.dashboardWidgets.length ? prefs.dashboardWidgets : DEFAULT_WIDGETS).filter((w) => w.enabled);
     const on = (k: string) => widgets.some((w) => w.key === k);
     const off = new Set(prefs.disabledFeatures);
@@ -359,13 +364,19 @@ export class MeService {
     return pageOf(rows, limit, (r) => [r.createdAt, r.id]);
   }
 
-  async localities(q: LocalityQuery) {
+  async localities(q: LocalityQuery, actor?: Actor) {
+    let country = q.country === 'all' ? null : q.country ?? null;
+    if (!q.country && actor) {
+      const [p] = await this.db.select({ c: userProfiles.country }).from(userProfiles).where(eq(userProfiles.userId, actor.userId));
+      country = p?.c ?? null;
+    }
     return this.db
-      .select({ id: localities.id, name: localities.name, city: localities.city, state: localities.state, pincodePrefix: localities.pincodePrefix })
+      .select({ id: localities.id, name: localities.name, city: localities.city, state: localities.state, country: localities.country, pincodePrefix: localities.pincodePrefix })
       .from(localities)
       .where(
         and(
           eq(localities.active, true),
+          country ? eq(localities.country, country) : undefined,
           q.search ? or(ilike(localities.name, `%${q.search.replace(/[%_]/g, '')}%`), ilike(localities.city, `%${q.search.replace(/[%_]/g, '')}%`)) : undefined,
           q.city ? ilike(localities.city, q.city.replace(/[%_]/g, '')) : undefined,
           q.pincodePrefix ? eq(localities.pincodePrefix, q.pincodePrefix) : undefined,

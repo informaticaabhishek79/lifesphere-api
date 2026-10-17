@@ -206,7 +206,7 @@ export class ConsumerController {
 
   /** Curated official complaint and civic channels with last-reviewed dates. */
   @Get('official-channels')
-  channels(@Query() q: OfficialChannelQuery) {
-    return this.svc.officialChannels(q.kind, q.topic);
+  async channels(@CurrentActor() actor: Actor, @Query() q: OfficialChannelQuery) {
+    return this.svc.officialChannels(q.kind, q.topic, await this.svc.countryOf(actor.userId));
   }
 }

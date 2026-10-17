@@ -19,7 +19,7 @@ class CheckInScheduleDto {
   @ArrayMaxSize(7)
   daysOfWeek?: number[];
   @ApiPropertyOptional({ description: 'For one-off, visit or assistance confirmations' }) @IsOptional() @IsDateString() oneOffAt?: string;
-  @ApiPropertyOptional({ example: 'Asia/Kolkata' }) @IsOptional() @IsString() @MaxLength(60) timezone?: string;
+  @ApiPropertyOptional({ example: 'Europe/London' }) @IsOptional() @IsString() @MaxLength(60) timezone?: string;
   @ApiPropertyOptional({ default: 15 }) @IsOptional() @Type(() => Number) @IsInt() @Min(5) @Max(240) reminderAfterMinutes?: number;
   @ApiPropertyOptional({ default: 30 }) @IsOptional() @Type(() => Number) @IsInt() @Min(5) @Max(720) graceMinutes?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() escalate?: boolean;

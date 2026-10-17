@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { AiAdapter } from '../../adapters/ai';
+import { countryName, forCountry, languageName } from '../../common/countries';
 import { AuditService } from '../../common/audit.service';
 import { Actor } from '../../common/auth-context';
 import { AppError, badRequest, notFound, unprocessable } from '../../common/errors';
@@ -17,6 +18,7 @@ import {
   officialChannels,
   purchases,
   userPreferences,
+  userProfiles,
 } from '../../db/schema';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -283,8 +285,10 @@ export class ConsumerService {
     ]
       .filter(Boolean)
       .join('\n');
+    const [who] = await this.db.select({ country: userProfiles.country, locale: userProfiles.locale }).from(userProfiles).where(eq(userProfiles.userId, actor.userId));
+    const place = countryName(who?.country);
     const system =
-      'COMPLAINT_DRAFT. You help a consumer in India write a clear complaint letter. Use ONLY the facts provided. ' +
+      `COMPLAINT_DRAFT. You help a consumer${place ? ` in ${place}` : ''} write a clear complaint letter in ${languageName(who?.locale)}. Use ONLY the facts provided. ` +
       'Do not invent dates, amounts, reference numbers, laws, legal sections, case citations or promises. ' +
       'Where a fact is missing, write a placeholder in square brackets like [order number]. ' +
       `Tone: ${details.tone ?? 'polite'} but clear. Output only the letter text.`;
@@ -336,7 +340,11 @@ export class ConsumerService {
     };
   }
 
-  async officialChannels(kind?: string, topic?: string) {
+  countryOf(userId: string) {
+    return this.policy.countryOf(userId);
+  }
+
+  async officialChannels(kind?: string, topic?: string, country?: string | null) {
     return this.db
       .select()
       .from(officialChannels)
@@ -345,6 +353,7 @@ export class ConsumerService {
           eq(officialChannels.active, true),
           kind ? eq(officialChannels.kind, kind as 'consumer') : undefined,
           topic ? sql`${topic} = any(${officialChannels.topics})` : undefined,
+          forCountry(officialChannels.country, country),
         ),
       )
       .orderBy(asc(officialChannels.name));

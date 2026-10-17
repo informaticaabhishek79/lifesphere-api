@@ -92,7 +92,7 @@ class BudgetLineDto {
   @ApiProperty({ example: 'Groceries' }) @IsString() @MinLength(1) @MaxLength(40) category: string;
   @ApiProperty() @IsNumber() @Min(0) @Max(1e10) plannedAmount: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(1e10) spentAmount?: number;
-  @ApiPropertyOptional({ example: 'INR' }) @IsOptional() @Matches(/^[A-Z]{3}$/) currency?: string;
+  @ApiPropertyOptional({ example: 'INR', description: 'ISO 4217; defaults to your country’s currency' }) @IsOptional() @Matches(/^[A-Z]{3}$/) currency?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) note?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() householdId?: string;
 }

@@ -6,11 +6,16 @@ export class OtpRequestDto {
   @IsIn(['sms', 'email'])
   channel: 'sms' | 'email';
 
-  @ApiProperty({ example: '+919876543210', description: 'Phone number (E.164 or 10-digit Indian) or email address' })
+  @ApiProperty({ example: '+447700900123', description: 'Phone number (E.164, or national format with `country`) or email address' })
   @IsString()
   @MinLength(5)
   @MaxLength(254)
   destination: string;
+
+  @ApiPropertyOptional({ example: 'GB', description: 'ISO 3166 country used to read a phone number given without +country code. Default IN.' })
+  @IsOptional()
+  @Matches(/^[A-Z]{2}$/)
+  country?: string;
 }
 
 export class DeviceInfoDto {
@@ -52,17 +57,22 @@ export class OtpVerifyDto extends DeviceInfoDto {
   @MaxLength(20)
   acceptedPolicyVersion?: string;
 
-  @ApiPropertyOptional({ example: 'Asia/Kolkata' })
+  @ApiPropertyOptional({ example: 'Europe/London', description: 'New accounts: the device time zone' })
   @IsOptional()
   @IsString()
   @MaxLength(60)
   timezone?: string;
 
-  @ApiPropertyOptional({ example: 'en-IN' })
+  @ApiPropertyOptional({ example: 'en-GB', description: 'New accounts: preferred language' })
   @IsOptional()
   @IsString()
   @MaxLength(10)
   locale?: string;
+
+  @ApiPropertyOptional({ example: 'GB', description: 'New accounts: country of residence (else taken from the phone number or time zone)' })
+  @IsOptional()
+  @Matches(/^[A-Z]{2}$/)
+  country?: string;
 }
 
 export class MfaVerifyDto {
@@ -104,6 +114,7 @@ export class ReauthVerifyDto {
 export class ContactVerifyRequestDto {
   @ApiProperty({ enum: ['sms', 'email'] }) @IsIn(['sms', 'email']) channel: 'sms' | 'email';
   @ApiProperty() @IsString() @MinLength(5) @MaxLength(254) destination: string;
+  @ApiPropertyOptional({ example: 'GB' }) @IsOptional() @Matches(/^[A-Z]{2}$/) country?: string;
 }
 
 export class ContactVerifyDto {

@@ -55,6 +55,8 @@ export const knowledgeArticles = pgTable(
     canonicalUrl: varchar('canonical_url', { length: 400 }),
     topic: varchar('topic', { length: 60 }).notNull(),
     language: varchar('language', { length: 10 }).notNull().default('en'),
+    /** ISO country the guide applies to; null = general guidance for everyone. */
+    country: varchar('country', { length: 2 }),
     publishedOn: date('published_on'),
     lastReviewedOn: date('last_reviewed_on'),
     status: articleStatus('status').notNull().default('draft'),

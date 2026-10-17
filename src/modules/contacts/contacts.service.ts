@@ -45,7 +45,7 @@ export class ContactsService {
   // ------------------------------------------------------------------ invitations
   async invite(actor: Actor, dto: { phone?: string; email?: string; userId?: string; label?: string; message?: string; proposedScopes?: string[] }) {
     const scopes = this.validateScopes(dto.proposedScopes);
-    const resolved = await this.invites.resolve(dto);
+    const resolved = await this.invites.resolve(dto, actor.userId);
     if (resolved.userId === actor.userId) throw badRequest('You cannot add yourself', 'self_contact');
     if (resolved.userId && (await this.policy.isTrustedContact(actor.userId, resolved.userId))) throw conflict('Already a trusted contact', 'already_contact');
     if (resolved.userId && (await this.policy.isBlockedEitherWay(actor.userId, resolved.userId))) throw notFound('User');
@@ -284,7 +284,7 @@ export class ContactsService {
       category: 'security',
       template: 'grant_created',
       title: `You are sharing with ${granteeName}`,
-      body: `${granteeName} will be able to ${what}${this.env.GRANT_COOLOFF_MINUTES ? ` from ${effectiveAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}. You can undo this any time.`,
+      body: `${granteeName} will be able to ${what}${this.env.GRANT_COOLOFF_MINUTES ? ` in ${this.env.GRANT_COOLOFF_MINUTES} minute${this.env.GRANT_COOLOFF_MINUTES === 1 ? '' : 's'}` : ''}. You can undo this any time.`,
       data: { type: 'grants', id: actor.userId },
       critical: true,
     });

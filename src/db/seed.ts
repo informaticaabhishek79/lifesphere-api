@@ -1,8 +1,9 @@
-/* Development / first-install seed. Idempotent. Usage: npm run db:seed  (add -- --admin=+919876543210 to create a super admin) */
+/* Development / first-install seed. Idempotent. Usage: npm run db:seed  (add -- --admin=+919876543210 or -- --admin=you@example.com to make a super admin) */
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { loadEnv } from '../config/env';
 import { createPool } from './db';
+import { normalizeEmail } from '../common/crypto.service';
 import * as s from './schema';
 
 const LOCALITIES: (typeof s.localities.$inferInsert)[] = [
@@ -165,18 +166,27 @@ export async function runSeed(argv: string[] = process.argv) {
       })
       .onConflictDoNothing();
 
+    // --admin=+919876543210 or --admin=you@example.com. An existing account (for example one made with Google) just gets the role.
     const adminArg = argv.find((a) => a.startsWith('--admin='));
     if (adminArg) {
-      const phone = adminArg.split('=')[1];
-      let [u] = await db.select().from(s.users).where(eq(s.users.phoneE164, phone));
+      const raw = adminArg.slice('--admin='.length).trim();
+      const isEmail = raw.includes('@');
+      const email = isEmail ? normalizeEmail(raw) : null;
+      if (isEmail && !email) throw new Error(`Not a valid email: ${raw}`);
+      if (!isEmail && !/^\+[1-9]\d{6,14}$/.test(raw)) throw new Error(`Use a phone number with country code (+91…) or an email: ${raw}`);
+      let [u] = await db.select().from(s.users).where(isEmail ? eq(s.users.email, email!) : eq(s.users.phoneE164, raw));
       if (!u) {
-        [u] = await db.insert(s.users).values({ phoneE164: phone, phoneVerifiedAt: new Date(), ageConfirmedAt: new Date() }).returning();
+        const now = new Date();
+        [u] = await db
+          .insert(s.users)
+          .values(isEmail ? { email: email!, emailVerifiedAt: now, ageConfirmedAt: now } : { phoneE164: raw, phoneVerifiedAt: now, ageConfirmedAt: now })
+          .returning();
         await db.insert(s.userProfiles).values({ userId: u.id, displayName: 'Platform admin' });
         await db.insert(s.userPreferences).values({ userId: u.id });
         await db.insert(s.consentRecords).values([{ userId: u.id, purpose: 'terms', policyVersion: '2026-10' }, { userId: u.id, purpose: 'privacy_notice', policyVersion: '2026-10' }]);
       }
       await db.insert(s.staffRoles).values({ userId: u.id, role: 'super_admin' }).onConflictDoNothing();
-      console.log(`Super admin ready for ${phone}. Sign in with OTP, then enable two-factor (required for /admin).`);
+      console.log(`Super admin ready for ${raw}. Sign in, then turn on two-step verification in Settings (required for /admin).`);
     }
     if (require.main === module) console.log('Seed complete');
   } finally {

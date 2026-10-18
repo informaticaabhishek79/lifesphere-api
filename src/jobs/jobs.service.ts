@@ -93,6 +93,14 @@ export class JobsService implements OnApplicationBootstrap {
     await boss.schedule(JOBS.privacyDeletionSweep, '0 3 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     await boss.schedule(JOBS.householdDailyTick, '0 8 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     this.logger.log('Worker handlers and schedules registered');
+    if (this.env.WORKER_HEARTBEAT_URL) {
+      let host = 'invalid address';
+      try {
+        host = new URL(this.env.WORKER_HEARTBEAT_URL).host;
+      } catch {}
+      this.logger.log(`Heartbeat pings: on (${host}, every minute)`);
+      void this.heartbeat();
+    } else this.logger.log('Heartbeat pings: off (WORKER_HEARTBEAT_URL not set)');
   }
 
   /** Every minute: check-in engine and reminder safety net. */
@@ -103,9 +111,16 @@ export class JobsService implements OnApplicationBootstrap {
     return { ...c, overdueReminders: r };
   }
 
+  private heartbeatFailing = false;
+
   async heartbeat() {
     if (!this.env.WORKER_HEARTBEAT_URL) return;
-    await fetch(this.env.WORKER_HEARTBEAT_URL, { method: 'GET', signal: AbortSignal.timeout(5000) }).catch(() => undefined);
+    const res = await fetch(this.env.WORKER_HEARTBEAT_URL, { method: 'GET', signal: AbortSignal.timeout(5000) }).catch((e: Error) => e);
+    const failure = res instanceof Error ? res.message : res.ok ? null : `HTTP ${res.status}`;
+    // Log a failure once, and the recovery, rather than every minute.
+    if (failure && !this.heartbeatFailing) this.logger.warn(`Heartbeat ping failed: ${failure}`);
+    if (!failure && this.heartbeatFailing) this.logger.log('Heartbeat ping working again');
+    this.heartbeatFailing = !!failure;
   }
 
   /** Daily 08:00 (JOBS_TIMEZONE): maintenance, warranties, case follow-ups, verification expiry, monthly sharing summary. */

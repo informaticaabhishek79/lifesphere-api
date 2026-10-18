@@ -13,8 +13,33 @@ import { NotificationsService } from '../notifications/notifications.service';
 type Schedule = typeof checkInSchedules.$inferSelect;
 export type CheckInKind = 'daily' | 'weekly' | 'one_off' | 'visit_confirmation' | 'assistance_confirmation';
 
+export type CheckInPurpose = 'wellbeing' | 'medicine';
+
+/** Wording for each purpose, so a medicine reminder never reads like a welfare alarm and vice versa. */
+const WORDS: Record<CheckInPurpose, { prompt: (l: string) => string; remind: (l: string) => string; sms: (l: string) => string; missed: (n: string, l: string) => string; missedSms: (n: string) => string; late: (n: string) => string }> = {
+  wellbeing: {
+    prompt: (l) => `${l}: tap "I'm OK" to check in`,
+    remind: (l) => `Reminder: ${l} — please check in`,
+    sms: (l) => `LifeSphere: please open the app and tap I'm OK for ${l}`,
+    missed: (n, l) => `${n} missed their check-in (${l})`,
+    missedSms: (n) => `LifeSphere: ${n} missed a check-in. Please try to reach them.`,
+    late: (n) => `${n} has now checked in`,
+  },
+  medicine: {
+    prompt: (l) => `Time for ${l}. Tap "Taken" when done`,
+    remind: (l) => `Reminder: ${l} — tap "Taken" once you have had it`,
+    // SMS can be read on a lock screen, so it never names the medicine.
+    sms: () => 'LifeSphere: a reminder is waiting. Open the app and tap Taken.',
+    missed: (n, l) => `${n} hasn't confirmed ${l}`,
+    missedSms: (n) => `LifeSphere: ${n} hasn't confirmed a reminder. You may want to call.`,
+    late: (n) => `${n} has now confirmed`,
+  },
+};
+export const words = (p: string) => WORDS[(p as CheckInPurpose) in WORDS ? (p as CheckInPurpose) : 'wellbeing'];
+
 export interface ScheduleInput {
   label: string;
+  purpose?: CheckInPurpose;
   kind: CheckInKind;
   timeLocal?: string;
   daysOfWeek?: number[];
@@ -103,6 +128,11 @@ export class CheckinsService {
     await this.audit.record(actor, { action: 'consent.granted', targetType: 'consent', subjectUserId: actor.userId, metadata: { purpose: 'checkins_sharing' } });
   }
 
+  /** Explicit consent that chosen contacts may be alerted, given before any contact is chosen. */
+  async recordAlertConsent(actor: Actor) {
+    await this.ensureConsent(actor, { consentToAlertContacts: true }, true);
+  }
+
   async schedules(actor: Actor) {
     const rows = await this.db.select().from(checkInSchedules).where(eq(checkInSchedules.userId, actor.userId)).orderBy(asc(checkInSchedules.createdAt));
     const ids = rows.map((r) => r.id);
@@ -134,6 +164,7 @@ export class CheckinsService {
       .values({
         userId: actor.userId,
         label: dto.label,
+        purpose: dto.purpose ?? 'wellbeing',
         ...base,
         reminderAfterMinutes: dto.reminderAfterMinutes ?? 15,
         graceMinutes: dto.graceMinutes ?? 30,
@@ -179,6 +210,7 @@ export class CheckinsService {
       .set({
         ...next,
         label: dto.label ?? s.label,
+        purpose: dto.purpose ?? s.purpose,
         reminderAfterMinutes: dto.reminderAfterMinutes ?? s.reminderAfterMinutes,
         graceMinutes: dto.graceMinutes ?? s.graceMinutes,
         escalate,
@@ -210,7 +242,7 @@ export class CheckinsService {
     const from = q.from ? new Date(q.from) : addDays(new Date(), -7);
     const to = q.to ? new Date(q.to) : addDays(new Date(), 1);
     return this.db
-      .select({ id: checkInEvents.id, scheduleId: checkInEvents.scheduleId, label: checkInSchedules.label, dueAt: checkInEvents.dueAt, state: checkInEvents.state, completedAt: checkInEvents.completedAt, escalatedAt: checkInEvents.escalatedAt, acknowledgedAt: checkInEvents.acknowledgedAt, note: checkInEvents.note })
+      .select({ id: checkInEvents.id, scheduleId: checkInEvents.scheduleId, label: checkInSchedules.label, purpose: checkInSchedules.purpose, dueAt: checkInEvents.dueAt, state: checkInEvents.state, completedAt: checkInEvents.completedAt, escalatedAt: checkInEvents.escalatedAt, acknowledgedAt: checkInEvents.acknowledgedAt, note: checkInEvents.note })
       .from(checkInEvents)
       .innerJoin(checkInSchedules, eq(checkInSchedules.id, checkInEvents.scheduleId))
       .where(and(eq(checkInEvents.userId, userId), gte(checkInEvents.dueAt, from), lte(checkInEvents.dueAt, to)))
@@ -263,19 +295,23 @@ export class CheckinsService {
       [e] = await this.db.select().from(checkInEvents).where(and(eq(checkInEvents.id, eventId), eq(checkInEvents.userId, actor.userId)));
       if (!e) throw notFound('Check-in');
     } else {
+      // "I'm OK" answers the wellbeing check-in only; medicines are confirmed one by one with "Taken".
       [e] = await this.db
-        .select()
+        .select({ e: checkInEvents })
         .from(checkInEvents)
+        .innerJoin(checkInSchedules, eq(checkInSchedules.id, checkInEvents.scheduleId))
         .where(
           and(
             eq(checkInEvents.userId, actor.userId),
+            eq(checkInSchedules.purpose, 'wellbeing'),
             inArray(checkInEvents.state, ['pending', 'reminded', 'missed', 'escalated']),
             gte(checkInEvents.dueAt, addDays(new Date(), -1)),
             lte(checkInEvents.dueAt, addMinutes(new Date(), 120)),
           ),
         )
         .orderBy(desc(checkInEvents.dueAt))
-        .limit(1);
+        .limit(1)
+        .then((r) => r.map((x) => x.e));
       if (!e) return { status: 'no_open_check_in', message: 'Nothing to check in for right now. Thank you!' };
     }
     if (e.state === 'completed') return { status: 'already_completed', event: e };
@@ -288,8 +324,10 @@ export class CheckinsService {
     if (wasEscalated) {
       const recipients = await this.db.select({ u: alertDeliveries.recipientUserId }).from(alertDeliveries).where(and(eq(alertDeliveries.alertType, 'check_in_missed'), eq(alertDeliveries.alertId, e.id)));
       const name = await this.names.displayName(actor.userId);
+      const [sch] = await this.db.select({ purpose: checkInSchedules.purpose }).from(checkInSchedules).where(eq(checkInSchedules.id, e.scheduleId));
+      const w = words(sch?.purpose ?? 'wellbeing');
       for (const r of recipients) {
-        await this.notifications.notify({ userId: r.u, category: 'checkins', template: 'checkin_late_ok', title: `${name} has now checked in`, data: { type: 'check_in_event', id: e.id }, channels: ['push', 'sms'], critical: true, smsText: `LifeSphere: ${name} has now checked in` });
+        await this.notifications.notify({ userId: r.u, category: 'checkins', template: 'checkin_late_ok', title: w.late(name), data: { type: 'check_in_event', id: e.id }, channels: ['push', 'sms'], critical: true, smsText: `LifeSphere: ${w.late(name)}`.slice(0, 120) });
       }
     }
     return { status: 'completed', event: u };
@@ -341,7 +379,7 @@ export class CheckinsService {
           userId: s.userId,
           category: 'checkins',
           template: 'checkin_prompt',
-          title: `${s.label}: tap "I'm OK" to check in`,
+          title: words(s.purpose).prompt(s.label),
           data: { type: 'check_in_event', id: ins[0].id },
           channels: ['push'],
           related: { type: 'check_in_event', id: ins[0].id },
@@ -364,12 +402,12 @@ export class CheckinsService {
         userId: e.userId,
         category: 'checkins',
         template: 'checkin_reminder',
-        title: `Reminder: ${s.label} — please check in`,
+        title: words(s.purpose).remind(s.label),
         body: s.escalate ? `If we don't hear from you in ${s.graceMinutes} minutes, we'll let your chosen contacts know.` : undefined,
         data: { type: 'check_in_event', id: e.id },
         channels: ['push', 'sms'],
         critical: true,
-        smsText: `LifeSphere: please open the app and tap I'm OK for ${s.label}`.slice(0, 120),
+        smsText: words(s.purpose).sms(s.label).slice(0, 120),
         related: { type: 'check_in_event', id: e.id },
       });
     }
@@ -400,12 +438,12 @@ export class CheckinsService {
           userId: r,
           category: 'checkins',
           template: 'checkin_missed_alert',
-          title: `${name} missed their check-in (${s.label})`,
+          title: words(s.purpose).missed(name, s.label),
           body: 'This does not necessarily mean something is wrong. Please try to reach them, then mark that you are following up.',
           data: { type: 'check_in_event', id: e.id },
           channels: ['push', 'sms'],
           critical: true,
-          smsText: `LifeSphere: ${name} missed a check-in. Please try to reach them.`.slice(0, 120),
+          smsText: words(s.purpose).missedSms(name).slice(0, 120),
           related: { type: 'check_in_event', id: e.id },
         });
         const jobs = res.jobs.length ? res.jobs : [{ id: null as string | null }];
@@ -416,8 +454,8 @@ export class CheckinsService {
         userId: e.userId,
         category: 'checkins',
         template: 'checkin_escalated_self',
-        title: 'We let your contacts know you missed a check-in',
-        body: "Tap I'm OK to let them know you're fine.",
+        title: s.purpose === 'medicine' ? `We let your contacts know ${s.label} wasn't confirmed` : 'We let your contacts know you missed a check-in',
+        body: s.purpose === 'medicine' ? 'Tap Taken if you have had it.' : "Tap I'm OK to let them know you're fine.",
         data: { type: 'check_in_event', id: e.id },
         channels: ['push'],
         critical: true,

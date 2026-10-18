@@ -17,6 +17,23 @@ class InviteContactDto {
   @IsIn(ALL_SCOPES, { each: true })
   @ArrayMaxSize(7)
   proposedScopes?: string[];
+  @ApiPropertyOptional({ enum: ALL_SCOPES, isArray: true, description: 'What you ask them to share with you; they choose when accepting' })
+  @IsOptional()
+  @IsIn(ALL_SCOPES, { each: true })
+  @ArrayMaxSize(7)
+  requestedScopes?: string[];
+}
+
+class AcceptInviteDto extends TokenDto {
+  @ApiPropertyOptional({ enum: ALL_SCOPES, isArray: true, description: 'Which of the requested things you agree to share back (cooling-off applies)' })
+  @IsOptional()
+  @IsIn(ALL_SCOPES, { each: true })
+  @ArrayMaxSize(7)
+  shareBack?: string[];
+}
+
+class RespondInviteDto extends RespondDto {
+  @ApiPropertyOptional({ enum: ALL_SCOPES, isArray: true }) @IsOptional() @IsIn(ALL_SCOPES, { each: true }) @ArrayMaxSize(7) shareBack?: string[];
 }
 
 class ContactLabelDto {
@@ -67,14 +84,14 @@ export class ContactsController {
 
   @Post('invitations/accept')
   @HttpCode(200)
-  accept(@CurrentActor() actor: Actor, @Body() dto: TokenDto) {
-    return this.svc.respond(actor, { token: dto.token }, true);
+  accept(@CurrentActor() actor: Actor, @Body() dto: AcceptInviteDto) {
+    return this.svc.respond(actor, { token: dto.token }, true, dto.shareBack);
   }
 
   @Post('invitations/:id/respond')
   @HttpCode(200)
-  respond(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RespondDto) {
-    return this.svc.respond(actor, { id }, dto.accept);
+  respond(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RespondInviteDto) {
+    return this.svc.respond(actor, { id }, dto.accept, dto.shareBack);
   }
 
   @Delete('invitations/:id')

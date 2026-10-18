@@ -236,6 +236,8 @@ export const userPreferences = pgTable('user_preferences', {
   quietHoursEnd: time('quiet_hours_end'),
   aiEnabled: boolean('ai_enabled').notNull().default(true),
   aiStoreHistory: boolean('ai_store_history').notNull().default(false),
+  /** What the person said they use LifeSphere for: null = not chosen yet, 'standard', 'caregiver', 'cared_for'. */
+  homeMode: varchar('home_mode', { length: 20 }),
   updatedAt: updatedAt(),
 });
 

@@ -98,6 +98,20 @@ const schema = z
     EMBEDDINGS_MODEL: z.string().default('text-embedding-3-small'),
     EMBEDDINGS_DIMENSIONS: z.coerce.number().int().default(1536),
 
+    /** Gmail connection (Google Cloud OAuth client, "Web application"). Redirect URI: API_BASE_URL/v1/mail/oauth/gmail/callback */
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    /** Outlook connection (Microsoft Entra app). Redirect URI: API_BASE_URL/v1/mail/oauth/outlook/callback */
+    MICROSOFT_CLIENT_ID: z.string().optional(),
+    MICROSOFT_CLIENT_SECRET: z.string().optional(),
+    MICROSOFT_TENANT: z.string().default('common'),
+    /** Offer a sample mailbox so agents can be tried without connecting a real one. Off in production by default. */
+    MAIL_DEMO_ENABLED: bool.optional(),
+    DOCUMENT_MAX_BYTES: z.coerce.number().int().default(20 * 1024 * 1024),
+    /** Text kept per file for agents to read (characters). */
+    DOCUMENT_TEXT_MAX_CHARS: z.coerce.number().int().default(200_000),
+    AGENT_RUN_RETENTION_DAYS: z.coerce.number().int().default(90),
+
     PRIVACY_REQUEST_SLA_DAYS: z.coerce.number().int().default(30),
     ACCOUNT_DELETION_GRACE_DAYS: z.coerce.number().int().default(7),
     SOFT_DELETE_PURGE_DAYS: z.coerce.number().int().default(30),
@@ -128,6 +142,10 @@ const schema = z
       ctx.addIssue({ code: 'custom', path: ['MSG91_AUTH_KEY'], message: `required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
     if ((env.SMS_PROVIDER === 'twilio' || env.SMS_PROVIDER === 'routed') && !(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID)))
       ctx.addIssue({ code: 'custom', path: ['TWILIO_ACCOUNT_SID'], message: `Twilio account SID, auth token and a sender are required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
+    if (!!env.GOOGLE_CLIENT_ID !== !!env.GOOGLE_CLIENT_SECRET)
+      ctx.addIssue({ code: 'custom', path: ['GOOGLE_CLIENT_SECRET'], message: 'set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither' });
+    if (!!env.MICROSOFT_CLIENT_ID !== !!env.MICROSOFT_CLIENT_SECRET)
+      ctx.addIssue({ code: 'custom', path: ['MICROSOFT_CLIENT_SECRET'], message: 'set both MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET, or neither' });
     if (env.EMAIL_PROVIDER === 'resend' && !env.RESEND_API_KEY)
       ctx.addIssue({ code: 'custom', path: ['RESEND_API_KEY'], message: 'required when EMAIL_PROVIDER=resend' });
     if (env.PUSH_PROVIDER === 'fcm' && !env.FCM_SERVICE_ACCOUNT_JSON)

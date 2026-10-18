@@ -9,6 +9,10 @@ const KINDS = ['daily', 'weekly', 'one_off', 'visit_confirmation', 'assistance_c
 
 class CheckInScheduleDto {
   @ApiProperty({ example: 'Morning check-in' }) @IsString() @MinLength(1) @MaxLength(80) label: string;
+  @ApiPropertyOptional({ enum: ['wellbeing', 'medicine'], default: 'wellbeing', description: '"Are you OK?" or "Did you take your medicine?"' })
+  @IsOptional()
+  @IsIn(['wellbeing', 'medicine'])
+  purpose?: 'wellbeing' | 'medicine';
   @ApiProperty({ enum: KINDS }) @IsIn(KINDS as unknown as string[]) kind: (typeof KINDS)[number];
   @ApiPropertyOptional({ example: '09:00' }) @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) timeLocal?: string;
   @ApiPropertyOptional({ example: [1, 3, 5], description: '0=Sunday … 6=Saturday (weekly)' })

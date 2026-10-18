@@ -10,9 +10,9 @@ This repository is the **backend**: the API and its background worker. The web a
 | | |
 |---|---|
 | Stack | Node 22, NestJS 11, TypeScript, PostgreSQL 15+ (Drizzle ORM), pg-boss job queue |
-| API | 313 operations on 233 paths, versioned under `/v1`, OpenAPI at `/docs` |
-| Database | 86 tables (82 `public`, 4 `auth`), 3 migrations, idempotent seed |
-| Tests | 135 automated tests in 8 suites, run against a real Postgres |
+| API | 355 operations on 265 paths, versioned under `/v1`, OpenAPI at `/docs` |
+| Database | 94 tables (90 `public`, 4 `auth`), 6 migrations, idempotent seed |
+| Tests | 176 automated tests in 12 suites, run against a real Postgres |
 | Countries | Any country: phone numbers, emergency number, currency, time zone and language per country; official complaint channels and guides tagged by country |
 | Processes | `api` (HTTP) and `worker` (reminders, check-in escalation, notifications, exports, deletion, retention) |
 
@@ -67,6 +67,9 @@ Sign in: `POST /v1/auth/otp/request` → `POST /v1/auth/otp/verify` (new account
 | Services | `/services/*`, `/service-requests`, `/provider-portal/*` | Directory with verification labels and sponsored disclosure, request lifecycle with history, open-request claiming, reviews |
 | Assistant | `/knowledge/*`, `/assistant/*` | Public-knowledge RAG with citations, prompt-injection fencing, optional pgvector, feedback and evaluation runs |
 | Admin | `/admin/*` | Staff roles (MFA required), user status, privacy request handling, moderation queue, provider review and verification, catalogue, config, audit log |
+| Documents | `/documents/*` | Folders (nested) and files: upload (type checked from content), text notes, rename, move, bin with restore, preview |
+| Agents | `/agents/*`, `/mail/*` | Email agents (Gmail, Outlook or a sample mailbox) and documents agents limited to granted folders; activity log; review-before-send |
+| Voice assistant | `/voice/*` | Answers questions about your own data and how to use the app; picks the right feature with read-only tools; documents only from chosen folders |
 | Notifications | `/notifications/*` | Inbox, per-category channel preferences, device registration (FCM / Web Push), provider delivery webhooks |
 
 Full list: [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md).
@@ -80,6 +83,41 @@ Full list: [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md).
 - **SMS:** `SMS_PROVIDER=msg91` (India), `twilio` (worldwide), or `routed` (`+91` via MSG91, everything else via Twilio). Twilio needs `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`.
 - **Daily jobs** (digest, retention) run at 08:00 / 02:30 in `JOBS_TIMEZONE` (default `UTC`; set `Asia/Kolkata` to keep the old India timing).
 - The assistant and complaint drafts are told the person's country, emergency number and language.
+
+## Parent care
+
+The focused version of LifeSphere for families looking after an elderly parent. It is built on the existing contacts, grants, check-ins and help — no new way to see anyone's data.
+
+- **What the home is for** (`homeMode`): `caregiver` (my home shows how the people I look after are doing), `cared_for` (simple home with big buttons) or `standard`. `POST /v1/care/mode` sets it; with `focus` it also hides features unrelated to care, which come back from Settings or by choosing `standard`.
+- **Invitations that ask to share back:** a son can invite his mother with `requestedScopes` (see check-ins, alerts, help alerts, calendar…). She sees exactly what is asked, unticks what she wants, and accepts with `shareBack`. That creates ordinary grants from her, with the same safeguards as Sharing (recent sign-in, cooling-off, SMS notice, audit). Nothing outside what was asked can be shared this way.
+- **Medicine reminders** are check-ins with `purpose: 'medicine'`: the same reminder → grace → alert-your-contacts engine, with their own wording. "I'm OK" never ticks a medicine (each one is confirmed with "Taken"), and text messages never name the medicine.
+- **One-step setup** for the person being looked after: `POST /v1/care/setup` (daily check-in time, medicines and times, who is alerted, who to call first in Get help, larger text, focus). Running it again moves the daily check-in instead of adding a second one. A parent can set up first and invite her children after: people who accept an invitation offering `checkins.alerts` are added to her alerting check-ins.
+- **Views:** `GET /v1/care/people` (caregiver: each person who shares check-ins or help alerts, most urgent first, with today's check-ins and medicines, open help requests, shared appointments, invitations still waiting) and `GET /v1/care/today` (the parent's day, next times, who is looking out for them, call buttons). The voice assistant answers "Did Mum take her medicine?" from the same data.
+
+## Documents and agents
+
+- **Documents** are the person's own folders and files (PDF, images, Word/Excel/PowerPoint, text; 20 MB each by default). Text files are kept as text so an agent can read them; other types can be filed, renamed, moved and binned but not read yet. Deleted items stay in the bin for 30 days. The page asks people not to store ID, bank, tax, insurance or medical papers there.
+- **Documents agents** only see the folders they are given, each **read only** or **read and edit** (folders inside are included). The model asks for tools (list, read, create note, rename, move, bin…) and **every call is checked on the server against that grant**; anything else is reported as "not found". File text is passed to the model as data, never as instructions. Removing a grant takes effect on the next request.
+- **Email agents** use one mailbox. The person reads their inbox in LifeSphere (fetched live, not stored); the agent receives **only the one email the person points it at**, writes the reply and sends it in the same thread — or holds it for review when "review before sending" is on. Emails asking the agent to do other things are treated as data.
+- **Activity log:** every request, each step an agent took (or was blocked from), and every reply it wrote, kept 90 days (`AGENT_RUN_RETENTION_DAYS`). File contents are not copied into the log.
+- **Without an AI key** agents run a clearly labelled simulated mode that understands simple English requests ("List my files", "Summarise …", "Rename … to …", "Move … to …", "Create folder …", "Create note Name: text"). With `AI_PROVIDER=anthropic` they understand any request in any language.
+
+### Voice assistant
+
+`POST /v1/voice/ask` answers a spoken or typed question. The web app turns speech into text and reads the answer aloud with the browser's own speech features (Chrome, Edge and Safari; other browsers can type).
+
+- **The brain:** with `AI_PROVIDER=anthropic` the model chooses which parts of the app to look in, using 18 **read-only** tools (tasks, reminders, calendar, households, shopping lists, home inventory, budget, check-ins, contacts and sharing, emergency help, consumer cases and warranties, service requests, community, civic issues, document search and reading, guides, and an app how-to). It can call several for one question ("my day" = tasks + calendar), then answers in 1–4 short sentences in the person's language, with links to the screens it used.
+- **Same rules as the app:** each tool calls the same service the screens use, so household and sharing rules apply unchanged. Tools for features switched off in Settings are not offered. Documents only from the folders chosen under "What it can read" (`/v1/voice/settings`). It never changes anything.
+- **Nothing stored:** the conversation lives in the browser tab (the last few turns are sent with each question). The activity log records only which areas were looked up.
+- **Without an AI key** a keyword router (English and some Hindi) picks the feature and reads back real data, labelled "Simulated".
+
+### Connecting Gmail and Outlook
+
+Until these are set, only the sample mailbox (`MAIL_DEMO_ENABLED`, on outside production) is offered.
+
+- **Gmail:** Google Cloud console → APIs & Services → enable the *Gmail API* → OAuth consent screen (add scopes `gmail.readonly` and `gmail.send`; while in testing, add your Google account as a test user) → Credentials → *OAuth client ID*, type *Web application*, redirect URI `<API_BASE_URL>/v1/mail/oauth/gmail/callback` (for example `http://localhost:4008/v1/mail/oauth/gmail/callback`). Put the client ID and secret in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Public launch needs Google's verification for these scopes.
+- **Outlook:** Microsoft Entra admin center → App registrations → New, "Accounts in any organizational directory and personal Microsoft accounts", redirect URI (Web) `<API_BASE_URL>/v1/mail/oauth/outlook/callback`. Add delegated Graph permissions `Mail.Read`, `Mail.Send`, `User.Read`, `offline_access`; create a client secret. Set `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` (and `MICROSOFT_TENANT`, default `common`).
+- `API_BASE_URL` must be the address the browser can reach the API on, and `APP_BASE_URL` the web app's address (the callback sends people back to `/email`).
 
 ## Rules the code enforces
 

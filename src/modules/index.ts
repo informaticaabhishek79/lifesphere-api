@@ -36,6 +36,15 @@ import { KnowledgeService } from './knowledge/knowledge.service';
 import { AdminController } from './admin/admin.controller';
 import { AdminService } from './admin/admin.service';
 import { JobsService } from '../jobs/jobs.service';
+import { DocumentsController } from './documents/documents.controller';
+import { DocumentsService } from './documents/documents.service';
+import { AgentsController, MailController } from './agents/agents.controller';
+import { AgentsService } from './agents/agents.service';
+import { MailService } from './agents/mail.service';
+import { VoiceController } from './voice/voice.controller';
+import { VoiceService } from './voice/voice.service';
+import { CareController } from './care/care.controller';
+import { CareService } from './care/care.service';
 
 export const FEATURE_CONTROLLERS = [
   HealthController,
@@ -66,6 +75,11 @@ export const FEATURE_CONTROLLERS = [
   KnowledgeController,
   AssistantController,
   AdminController,
+  DocumentsController,
+  MailController,
+  AgentsController,
+  VoiceController,
+  CareController,
 ];
 export const FEATURE_PROVIDERS = [
   AuthService,
@@ -88,4 +102,9 @@ export const FEATURE_PROVIDERS = [
   KnowledgeService,
   AdminService,
   JobsService,
+  DocumentsService,
+  MailService,
+  AgentsService,
+  VoiceService,
+  CareService,
 ];

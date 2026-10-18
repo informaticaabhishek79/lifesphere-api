@@ -1,3 +1,5 @@
+import { DocumentsService } from '../modules/documents/documents.service';
+import { AgentsService } from '../modules/agents/agents.service';
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { StorageAdapter } from '../adapters/storage';
@@ -61,6 +63,8 @@ export class JobsService implements OnApplicationBootstrap {
     private readonly knowledge: KnowledgeService,
     private readonly moderation: ModerationService,
     private readonly admin: AdminService,
+    private readonly documents: DocumentsService,
+    private readonly agents: AgentsService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -168,6 +172,8 @@ export class JobsService implements OnApplicationBootstrap {
     out.helpLocations = await this.help.purgeLocations();
     out.evidenceSnapshots = await this.moderation.purgeEvidence();
     out.aiConversations = await this.knowledge.purgeConversations();
+    out.documentsBin = await this.documents.purgeBin(softCutoff);
+    out.agentRuns = await this.agents.purgeRuns();
     await this.db.execute(
       sql`update community_groups g set member_count = coalesce((select count(*) from group_memberships m where m.group_id = g.id and m.status = 'active'), 0)`,
     );

@@ -22,6 +22,27 @@
       "when": 1792170312727,
       "tag": "0002_global",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792241754119,
+      "tag": "0003_agents_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792246089850,
+      "tag": "0004_voice_assistant",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792255065865,
+      "tag": "0005_care",
+      "breakpoints": true
     }
   ]
 }

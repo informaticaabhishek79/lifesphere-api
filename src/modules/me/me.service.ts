@@ -125,6 +125,7 @@ export class MeService {
       quietHoursEnd: p.quietHoursEnd?.slice(0, 5) ?? null,
       aiEnabled: p.aiEnabled,
       aiStoreHistory: p.aiStoreHistory,
+      homeMode: (p.homeMode as 'standard' | 'caregiver' | 'cared_for' | null) ?? null,
     };
   }
 
@@ -169,6 +170,7 @@ export class MeService {
     }
     if (dto.aiEnabled !== undefined) patch.aiEnabled = dto.aiEnabled;
     if (dto.aiStoreHistory !== undefined) patch.aiStoreHistory = dto.aiStoreHistory;
+    if (dto.homeMode !== undefined) patch.homeMode = dto.homeMode;
     const [p] = await this.db.update(userPreferences).set(patch).where(eq(userPreferences.userId, actor.userId)).returning();
     return this.prefsOut(p);
   }

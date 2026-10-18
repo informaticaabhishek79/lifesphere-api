@@ -38,6 +38,8 @@ export const contactInvitations = pgTable(
     inviteeUserId: uuid('invitee_user_id').references(() => users.id, { onDelete: 'cascade' }),
     /** Scopes the inviter offers to grant the invitee once accepted (still subject to cooling-off). */
     proposedScopes: text('proposed_scopes').array().notNull().default(sql`'{}'::text[]`),
+    /** Scopes the inviter asks the invitee to share back (e.g. a son asking his mother to share check-ins). The invitee chooses on accepting. */
+    requestedScopes: text('requested_scopes').array().notNull().default(sql`'{}'::text[]`),
     label: varchar('label', { length: 40 }),
     message: varchar('message', { length: 300 }),
     tokenHash: varchar('token_hash', { length: 64 }).notNull(),
@@ -114,6 +116,8 @@ export const checkInSchedules = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     label: varchar('label', { length: 80 }).notNull(),
+    /** 'wellbeing' = "Are you OK?"; 'medicine' = "Did you take it?". Same reminder and alert rules. */
+    purpose: varchar('purpose', { length: 20 }).notNull().default('wellbeing'),
     kind: checkInKind('kind').notNull(),
     /** Local wall-clock time for daily/weekly schedules. */
     timeLocal: time('time_local'),

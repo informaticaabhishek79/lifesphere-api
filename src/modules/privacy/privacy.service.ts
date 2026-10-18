@@ -306,6 +306,23 @@ export class PrivacyService {
         .select({ id: s.attachments.id, purpose: s.attachments.purpose, originalName: s.attachments.originalName, mimeType: s.attachments.mimeType, sizeBytes: s.attachments.sizeBytes, createdAt: s.attachments.createdAt })
         .from(s.attachments)
         .where(and(eq(s.attachments.ownerUserId, userId), sql`${s.attachments.purpose} <> 'export'`)),
+      documentFolders: await this.db.select().from(s.docFolders).where(eq(s.docFolders.ownerUserId, userId)),
+      documentFiles: await this.db
+        .select({ id: s.docFiles.id, folderId: s.docFiles.folderId, name: s.docFiles.name, mimeType: s.docFiles.mimeType, sizeBytes: s.docFiles.sizeBytes, createdAt: s.docFiles.createdAt, updatedAt: s.docFiles.updatedAt, deletedAt: s.docFiles.deletedAt })
+        .from(s.docFiles)
+        .where(eq(s.docFiles.ownerUserId, userId)),
+      mailboxes: await this.db
+        .select({ id: s.mailAccounts.id, provider: s.mailAccounts.provider, address: s.mailAccounts.address, createdAt: s.mailAccounts.createdAt })
+        .from(s.mailAccounts)
+        .where(eq(s.mailAccounts.ownerUserId, userId)),
+      agents: await this.db.select().from(s.agents).where(eq(s.agents.ownerUserId, userId)),
+      agentFolderAccess: await this.db
+        .select({ agentId: s.agentFolderGrants.agentId, folderId: s.agentFolderGrants.folderId, access: s.agentFolderGrants.access, createdAt: s.agentFolderGrants.createdAt })
+        .from(s.agentFolderGrants)
+        .innerJoin(s.agents, eq(s.agents.id, s.agentFolderGrants.agentId))
+        .where(eq(s.agents.ownerUserId, userId)),
+      agentActivity: await this.db.select().from(s.agentRuns).where(eq(s.agentRuns.ownerUserId, userId)),
+      voiceAssistantSettings: await this.db.select().from(s.assistantSettings).where(eq(s.assistantSettings.userId, userId)),
       notifications: await this.db.select().from(s.notifications).where(eq(s.notifications.userId, userId)),
       privacyRequests: await this.db.select().from(s.privacyRequests).where(eq(s.privacyRequests.userId, userId)),
       activityLog: await this.db
@@ -313,7 +330,7 @@ export class PrivacyService {
         .from(s.auditEvents)
         .where(eq(s.auditEvents.subjectUserId, userId)),
       notes: {
-        attachmentsContent: 'Attachment files are not embedded; download them from the app before deleting your account.',
+        attachmentsContent: 'Attachment and document files are not embedded; download them from the app before deleting your account. Mailbox sign-in tokens are not exported.',
         taskIds: taskIds.length,
       },
     };
@@ -341,6 +358,8 @@ export class PrivacyService {
   async deleteAccountNow(userId: string) {
     const files = await this.db.select({ id: s.attachments.id, key: s.attachments.storageKey }).from(s.attachments).where(eq(s.attachments.ownerUserId, userId));
     for (const f of files) await this.storage.delete(f.key).catch(() => undefined);
+    const docs = await this.db.select({ key: s.docFiles.storageKey }).from(s.docFiles).where(eq(s.docFiles.ownerUserId, userId));
+    for (const f of docs) await this.storage.delete(f.key).catch(() => undefined);
 
     const ownedProviders = await this.db
       .select({ id: s.providerMembers.providerId })

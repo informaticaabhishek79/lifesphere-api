@@ -18,7 +18,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export const FEATURE_KEYS = ['lifeos', 'household', 'familycare', 'community', 'consumer', 'services', 'assistant'] as const;
+export const FEATURE_KEYS = ['lifeos', 'household', 'familycare', 'community', 'consumer', 'services', 'assistant', 'documents', 'agents'] as const;
+export const HOME_MODES = ['standard', 'caregiver', 'cared_for'] as const;
 export const WIDGET_KEYS = [
   'today_tasks',
   'upcoming_reminders',
@@ -101,6 +102,11 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsBoolean()
   aiStoreHistory?: boolean;
+
+  @ApiPropertyOptional({ enum: HOME_MODES, description: 'What the home screen focuses on: everything, looking after someone, or being looked after' })
+  @IsOptional()
+  @IsIn(HOME_MODES as unknown as string[])
+  homeMode?: (typeof HOME_MODES)[number];
 }
 
 export class LocalityQuery {

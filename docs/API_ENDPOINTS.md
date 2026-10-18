@@ -1,10 +1,11 @@
 # LifeSphere API — endpoint inventory
 
-Generated from the OpenAPI document. 313 operations across 233 paths. All paths are under `/v1`; interactive docs at `/docs`, spec at `/docs/openapi.json`.
+Generated from the OpenAPI document. 351 operations across 261 paths. All paths are under `/v1`; interactive docs at `/docs`, spec at `/docs/openapi.json`.
 
 | Area | Operations |
 |---|---|
 | admin | 53 |
+| agents | 11 |
 | assistant | 6 |
 | attachments | 5 |
 | auth | 17 |
@@ -16,11 +17,13 @@ Generated from the OpenAPI document. 313 operations across 233 paths. All paths 
 | consumer | 22 |
 | contacts | 10 |
 | directory | 3 |
+| documents | 16 |
 | health | 2 |
 | help | 9 |
 | home-inventory | 10 |
 | households | 17 |
 | knowledge | 3 |
+| mail | 8 |
 | me | 6 |
 | notifications | 10 |
 | privacy | 11 |
@@ -31,6 +34,7 @@ Generated from the OpenAPI document. 313 operations across 233 paths. All paths 
 | sharing | 5 |
 | shopping-lists | 9 |
 | tasks | 18 |
+| voice-assistant | 3 |
 
 ## admin
 
@@ -89,6 +93,22 @@ Generated from the OpenAPI document. 313 operations across 233 paths. All paths 
 | POST | `/v1/admin/users/{id}/disable` |  |
 | POST | `/v1/admin/users/{id}/enable` |  |
 | POST | `/v1/admin/users/{id}/revoke-sessions` |  |
+
+## agents
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/v1/agents` |  |
+| POST | `/v1/agents` |  |
+| GET | `/v1/agents/{id}` |  |
+| PATCH | `/v1/agents/{id}` |  |
+| DELETE | `/v1/agents/{id}` |  |
+| GET | `/v1/agents/{id}/activity` |  |
+| POST | `/v1/agents/{id}/documents/run` |  |
+| POST | `/v1/agents/{id}/email/reply` |  |
+| GET | `/v1/agents/activity` |  |
+| POST | `/v1/agents/activity/{runId}/approve` |  |
+| POST | `/v1/agents/activity/{runId}/discard` |  |
 
 ## assistant
 
@@ -275,6 +295,27 @@ Generated from the OpenAPI document. 313 operations across 233 paths. All paths 
 | GET | `/v1/localities` |  |
 | GET | `/v1/users/{id}/card` |  |
 
+## documents
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/v1/documents/bin` |  |
+| GET | `/v1/documents/files/{id}` |  |
+| PATCH | `/v1/documents/files/{id}` |  |
+| DELETE | `/v1/documents/files/{id}` |  |
+| GET | `/v1/documents/files/{id}/content` |  |
+| POST | `/v1/documents/files/{id}/restore` |  |
+| GET | `/v1/documents/files/{id}/text` |  |
+| PUT | `/v1/documents/files/{id}/text` |  |
+| POST | `/v1/documents/files/text` |  |
+| GET | `/v1/documents/folders` |  |
+| POST | `/v1/documents/folders` |  |
+| PATCH | `/v1/documents/folders/{id}` |  |
+| DELETE | `/v1/documents/folders/{id}` |  |
+| GET | `/v1/documents/folders/{id}/files` |  |
+| POST | `/v1/documents/folders/{id}/files` |  |
+| POST | `/v1/documents/folders/{id}/restore` |  |
+
 ## health
 
 | Method | Path | Notes |
@@ -340,6 +381,19 @@ Generated from the OpenAPI document. 313 operations across 233 paths. All paths 
 | GET | `/v1/knowledge/articles` |  |
 | GET | `/v1/knowledge/articles/{slug}` |  |
 | GET | `/v1/knowledge/topics` |  |
+
+## mail
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/v1/mail/accounts` |  |
+| DELETE | `/v1/mail/accounts/{id}` |  |
+| GET | `/v1/mail/accounts/{id}/messages` |  |
+| GET | `/v1/mail/accounts/{id}/messages/{messageId}` |  |
+| POST | `/v1/mail/accounts/demo` |  |
+| GET | `/v1/mail/oauth/{provider}/callback` |  |
+| POST | `/v1/mail/oauth/{provider}/start` |  |
+| GET | `/v1/mail/providers` |  |
 
 ## me
 
@@ -479,4 +533,12 @@ Generated from the OpenAPI document. 313 operations across 233 paths. All paths 
 | POST | `/v1/tasks/assignments/{assignmentId}/respond` |  |
 | GET | `/v1/tasks/assignments/incoming` |  |
 | GET | `/v1/tasks/summary` |  |
+
+## voice-assistant
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/v1/voice/ask` |  |
+| GET | `/v1/voice/settings` |  |
+| PUT | `/v1/voice/settings` |  |
 

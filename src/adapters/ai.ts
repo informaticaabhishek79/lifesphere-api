@@ -1,5 +1,22 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { AppError } from '../common/errors';
 import { Env, ENV } from '../config/env';
+
+/**
+ * Turns an AI provider failure into a clear, safe message (no key or request content), so the person or
+ * operator can fix it: wrong key, no credits, unknown model, or the service being busy.
+ */
+export function aiError(status: number, body: string): AppError {
+  let detail = 'The AI service could not answer right now. Please try again.';
+  let code = 'ai_unavailable';
+  if (status === 401) [code, detail] = ['ai_key_invalid', 'The AI key was rejected. Check ANTHROPIC_API_KEY in the API settings.'];
+  else if (status === 403) [code, detail] = ['ai_forbidden', 'The AI key is not allowed to use this model or workspace.'];
+  else if (/credit balance/i.test(body)) [code, detail] = ['ai_no_credits', 'The AI account has no credits left. Add credits in the Anthropic console.'];
+  else if (status === 404 || /model/i.test(body)) [code, detail] = ['ai_model_unavailable', 'The AI model in AI_MODEL is not available for this key.'];
+  else if (status === 429) [code, detail] = ['ai_busy', 'Too many AI requests right now. Try again in a minute.'];
+  else if (status === 529 || status >= 500) [code, detail] = ['ai_busy', 'The AI service is busy. Try again in a moment.'];
+  return new AppError(503, code, detail);
+}
 
 export interface AiMessage {
   role: 'user' | 'assistant';
@@ -16,8 +33,31 @@ export interface AiCompletion {
  * Provider abstraction for text generation. Only public knowledge and text the user explicitly
  * submits for assistance are ever sent. No user identifiers are included in requests.
  */
+export interface AiTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export type AiBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+
+export interface AiToolMessage {
+  role: 'user' | 'assistant';
+  content: string | AiBlock[];
+}
+
+export interface AiToolTurn {
+  content: AiBlock[];
+  stopReason: string;
+  model: string;
+}
+
 @Injectable()
 export class AiAdapter {
+  private readonly logger = new Logger('AiAdapter');
   constructor(@Inject(ENV) private readonly env: Env) {}
 
   get enabled() {
@@ -38,7 +78,8 @@ export class AiAdapter {
     });
     if (!res.ok) {
       const err = await res.text().catch(() => '');
-      throw new Error(`AI provider error ${res.status}: ${err.slice(0, 200)}`);
+      this.logger.warn(`AI provider error ${res.status}: ${err.slice(0, 300)}`);
+      throw aiError(res.status, err);
     }
     const body = (await res.json()) as { content?: { type: string; text?: string }[]; model?: string };
     const text = (body.content ?? [])
@@ -47,6 +88,31 @@ export class AiAdapter {
       .join('\n')
       .trim();
     return { text, model: body.model ?? this.env.AI_MODEL, simulated: false };
+  }
+
+  /** True when no real model is configured; callers use their own labelled stand-in. */
+  get simulated() {
+    return this.env.AI_PROVIDER === 'mock';
+  }
+
+  /**
+   * One turn of a tool-using conversation. The caller runs any requested tools itself (with its own
+   * permission checks) and calls again with the results. Never used in mock mode.
+   */
+  async toolTurn(system: string, messages: AiToolMessage[], tools: AiTool[], maxTokens = 1500): Promise<AiToolTurn> {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': this.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: this.env.AI_MODEL, max_tokens: maxTokens, system, messages, tools }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      this.logger.warn(`AI provider error ${res.status}: ${err.slice(0, 300)}`);
+      throw aiError(res.status, err);
+    }
+    const body = (await res.json()) as { content?: AiBlock[]; stop_reason?: string; model?: string };
+    return { content: body.content ?? [], stopReason: body.stop_reason ?? 'end_turn', model: body.model ?? this.env.AI_MODEL };
   }
 
   /** Deterministic, clearly labelled stand-in for development and tests. */

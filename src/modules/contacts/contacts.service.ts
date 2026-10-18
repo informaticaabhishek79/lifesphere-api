@@ -43,8 +43,9 @@ export class ContactsService {
   }
 
   // ------------------------------------------------------------------ invitations
-  async invite(actor: Actor, dto: { phone?: string; email?: string; userId?: string; label?: string; message?: string; proposedScopes?: string[] }) {
+  async invite(actor: Actor, dto: { phone?: string; email?: string; userId?: string; label?: string; message?: string; proposedScopes?: string[]; requestedScopes?: string[] }) {
     const scopes = this.validateScopes(dto.proposedScopes);
+    const requested = this.validateScopes(dto.requestedScopes);
     const resolved = await this.invites.resolve(dto, actor.userId);
     if (resolved.userId === actor.userId) throw badRequest('You cannot add yourself', 'self_contact');
     if (resolved.userId && (await this.policy.isTrustedContact(actor.userId, resolved.userId))) throw conflict('Already a trusted contact', 'already_contact');
@@ -63,6 +64,7 @@ export class ContactsService {
         inviteeUserId: resolved.userId,
         inviteeContactHash: resolved.contactHash,
         proposedScopes: scopes,
+        requestedScopes: requested,
         label: dto.label,
         message: dto.message,
         tokenHash: this.crypto.hmac(token, 'invite-token'),
@@ -85,12 +87,12 @@ export class ContactsService {
       await this.invites.sendExternal(resolved.phone, resolved.email, name, 'be a trusted contact', link);
     }
     await this.audit.record(actor, { action: 'contact.invited', targetType: 'contact_invitation', targetId: inv.id, subjectUserId: actor.userId, metadata: { scopes: scopes.join(',') } });
-    return { id: inv.id, status: inv.status, proposedScopes: scopes, expiresAt: inv.expiresAt, inviteLink: link };
+    return { id: inv.id, status: inv.status, proposedScopes: scopes, requestedScopes: requested, expiresAt: inv.expiresAt, inviteLink: link };
   }
 
   async sentInvitations(actor: Actor) {
     return this.db
-      .select({ id: contactInvitations.id, status: contactInvitations.status, inviteeUserId: contactInvitations.inviteeUserId, label: contactInvitations.label, proposedScopes: contactInvitations.proposedScopes, expiresAt: contactInvitations.expiresAt, createdAt: contactInvitations.createdAt })
+      .select({ id: contactInvitations.id, status: contactInvitations.status, inviteeUserId: contactInvitations.inviteeUserId, label: contactInvitations.label, proposedScopes: contactInvitations.proposedScopes, requestedScopes: contactInvitations.requestedScopes, expiresAt: contactInvitations.expiresAt, createdAt: contactInvitations.createdAt })
       .from(contactInvitations)
       .where(eq(contactInvitations.inviterUserId, actor.userId))
       .orderBy(desc(contactInvitations.createdAt))
@@ -99,7 +101,7 @@ export class ContactsService {
 
   async incomingInvitations(actor: Actor) {
     return this.db
-      .select({ id: contactInvitations.id, inviterUserId: contactInvitations.inviterUserId, inviterName: userProfiles.displayName, message: contactInvitations.message, proposedScopes: contactInvitations.proposedScopes, expiresAt: contactInvitations.expiresAt })
+      .select({ id: contactInvitations.id, inviterUserId: contactInvitations.inviterUserId, inviterName: userProfiles.displayName, message: contactInvitations.message, proposedScopes: contactInvitations.proposedScopes, requestedScopes: contactInvitations.requestedScopes, expiresAt: contactInvitations.expiresAt })
       .from(contactInvitations)
       .innerJoin(userProfiles, eq(userProfiles.userId, contactInvitations.inviterUserId))
       .where(and(eq(contactInvitations.inviteeUserId, actor.userId), eq(contactInvitations.status, 'pending'), gt(contactInvitations.expiresAt, new Date())));
@@ -110,7 +112,7 @@ export class ContactsService {
     const [inv] = await this.db.select().from(contactInvitations).where(eq(contactInvitations.tokenHash, this.crypto.hmac(token, 'invite-token')));
     if (!inv || inv.status !== 'pending' || inv.expiresAt < new Date()) throw notFound('Invitation');
     if (!(await this.invites.matches(actor.userId, inv.inviteeUserId, inv.inviteeContactHash))) throw forbidden('This invitation was sent to a different phone number or email.', 'invitation_not_for_you');
-    return { id: inv.id, inviterName: await this.invites.displayName(inv.inviterUserId), message: inv.message, proposedScopes: inv.proposedScopes.map((s) => ({ scope: s, meaning: SCOPE_LABELS[s as GrantScope] })) };
+    return { id: inv.id, inviterName: await this.invites.displayName(inv.inviterUserId), message: inv.message, proposedScopes: inv.proposedScopes.map((s) => ({ scope: s, meaning: SCOPE_LABELS[s as GrantScope] })), requestedScopes: inv.requestedScopes.map((s) => ({ scope: s, meaning: SCOPE_LABELS[s as GrantScope] })) };
   }
 
   async cancelInvitation(actor: Actor, id: string) {
@@ -122,7 +124,7 @@ export class ContactsService {
     if (!res.length) throw notFound('Invitation');
   }
 
-  async respond(actor: Actor, by: { id?: string; token?: string }, accept: boolean) {
+  async respond(actor: Actor, by: { id?: string; token?: string }, accept: boolean, shareBack: string[] = []) {
     const where = by.id ? eq(contactInvitations.id, by.id) : eq(contactInvitations.tokenHash, this.crypto.hmac(by.token!, 'invite-token'));
     const [inv] = await this.db.select().from(contactInvitations).where(where);
     if (!inv || inv.status !== 'pending' || inv.expiresAt < new Date()) throw notFound('Invitation');
@@ -130,6 +132,12 @@ export class ContactsService {
     if (inv.inviterUserId === actor.userId) throw badRequest('You cannot accept your own invitation', 'self_contact');
     if (!(await this.invites.matches(actor.userId, inv.inviteeUserId, inv.inviteeContactHash))) {
       throw forbidden('This invitation was sent to a different phone number or email.', 'invitation_not_for_you');
+    }
+    const back = accept ? this.validateScopes(shareBack) : [];
+    for (const s of back) if (!inv.requestedScopes.includes(s)) throw badRequest('You can only share what was asked for', 'scope_not_requested');
+    // Sharing back is a new grant from the invitee, so it needs the same recent sign-in as Sharing (checked before anything changes).
+    if (back.length && Date.now() - Math.max(actor.sessionCreatedAt.getTime(), actor.reauthAt?.getTime() ?? 0) > 10 * 60_000) {
+      throw new AppError(403, 'reauth_required', 'Please confirm it is you before making this change.');
     }
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -154,7 +162,22 @@ export class ContactsService {
       data: { type: 'contact', id: actor.userId },
     });
     await this.audit.record(actor, { action: accept ? 'contact.accepted' : 'contact.declined', targetType: 'contact_invitation', targetId: inv.id, subjectUserId: inv.inviterUserId });
-    return { status: accept ? 'accepted' : 'declined', contactUserId: accept ? inv.inviterUserId : undefined };
+    // Same path as Sharing: cooling-off, in-app and SMS notice to the person sharing, audit.
+    if (back.length) await this.createGrants(actor, inv.inviterUserId, back);
+    // Whoever offered "alert them if I miss a check-in" meant it for their check-ins that already alert someone.
+    if (accept && inv.proposedScopes.includes('checkins.alerts')) await this.addAlertContact(inv.inviterUserId, actor.userId);
+    if (back.includes('checkins.alerts')) await this.addAlertContact(actor.userId, inv.inviterUserId);
+    return { status: accept ? 'accepted' : 'declined', contactUserId: accept ? inv.inviterUserId : undefined, sharedBack: back };
+  }
+
+  /** Adds a contact to the person's check-ins and medicines that are set to alert contacts. */
+  private async addAlertContact(userId: string, contactUserId: string) {
+    const schedules = await this.db.select({ id: checkInSchedules.id }).from(checkInSchedules).where(and(eq(checkInSchedules.userId, userId), eq(checkInSchedules.escalate, true)));
+    for (const s of schedules) {
+      const [{ n }] = await this.db.select({ n: sql<number>`count(*)::int` }).from(checkInEscalationContacts).where(eq(checkInEscalationContacts.scheduleId, s.id));
+      if (n >= 5) continue;
+      await this.db.insert(checkInEscalationContacts).values({ scheduleId: s.id, contactUserId, position: n }).onConflictDoNothing();
+    }
   }
 
   // ------------------------------------------------------------------ contacts

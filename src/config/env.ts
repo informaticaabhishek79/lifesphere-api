@@ -108,6 +108,9 @@ const schema = z
     EMBEDDINGS_DIMENSIONS: z.coerce.number().int().default(1536),
 
     /** Gmail connection (Google Cloud OAuth client, "Web application"). Redirect URI: API_BASE_URL/v1/mail/oauth/gmail/callback */
+    /** "Continue with Google" sign-in (OAuth client of type Web, scopes openid email profile only). */
+    GOOGLE_SIGNIN_CLIENT_ID: z.string().optional(),
+    GOOGLE_SIGNIN_CLIENT_SECRET: z.string().optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     /** Outlook connection (Microsoft Entra app). Redirect URI: API_BASE_URL/v1/mail/oauth/outlook/callback */
@@ -153,6 +156,8 @@ const schema = z
       ctx.addIssue({ code: 'custom', path: ['TWILIO_ACCOUNT_SID'], message: `Twilio account SID, auth token and a sender are required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
     if (env.SMS_PROVIDER === 'whatsapp' && !(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID))
       ctx.addIssue({ code: 'custom', path: ['WHATSAPP_TOKEN'], message: 'WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required when SMS_PROVIDER=whatsapp' });
+    if (!!env.GOOGLE_SIGNIN_CLIENT_ID !== !!env.GOOGLE_SIGNIN_CLIENT_SECRET)
+      ctx.addIssue({ code: 'custom', path: ['GOOGLE_SIGNIN_CLIENT_SECRET'], message: 'set both GOOGLE_SIGNIN_CLIENT_ID and GOOGLE_SIGNIN_CLIENT_SECRET, or neither' });
     if (!!env.GOOGLE_CLIENT_ID !== !!env.GOOGLE_CLIENT_SECRET)
       ctx.addIssue({ code: 'custom', path: ['GOOGLE_CLIENT_SECRET'], message: 'set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither' });
     if (!!env.MICROSOFT_CLIENT_ID !== !!env.MICROSOFT_CLIENT_SECRET)

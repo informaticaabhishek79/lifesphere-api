@@ -14,13 +14,37 @@ import {
   ReauthVerifyDto,
   RefreshDto,
   TotpConfirmDto,
+  GoogleStartDto,
+  GoogleVerifyDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
+import { GoogleSignInService } from './google-signin.service';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly google: GoogleSignInService,
+  ) {}
+
+  /** "Continue with Google", step 1: the address to send the person to, and a signed state for the web app to keep. */
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('google/start')
+  @HttpCode(200)
+  googleStart(@Body() dto: GoogleStartDto) {
+    return this.google.start(dto);
+  }
+
+  /** Step 2: the code Google returned. Signs in, links a matching verified email, or creates the account. */
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('google/verify')
+  @HttpCode(200)
+  googleVerify(@Body() dto: GoogleVerifyDto, @Req() req: Request) {
+    return this.google.verify(dto, req.ip, req.headers['user-agent']);
+  }
 
   /** Sends a one-time code. Works for both sign-in and sign-up; the response never reveals whether an account exists. */
   @Public()

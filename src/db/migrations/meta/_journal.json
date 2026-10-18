@@ -43,6 +43,13 @@
       "when": 1792255065865,
       "tag": "0005_care",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792309856666,
+      "tag": "0006_google_signin",
+      "breakpoints": true
     }
   ]
 }

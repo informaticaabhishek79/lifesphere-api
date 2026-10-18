@@ -82,6 +82,22 @@ export const otpChallenges = authSchema.table(
   (t) => [index('otp_dest_idx').on(t.destinationHash, t.createdAt)],
 );
 
+/** Sign-in accounts at other providers (Google), linked to a LifeSphere user. Only the provider's stable id is kept. */
+export const userIdentities = authSchema.table(
+  'user_identities',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 20 }).notNull(),
+    subject: varchar('subject', { length: 255 }).notNull(),
+    createdAt: createdAt(),
+    lastUsedAt: ts('last_used_at'),
+  },
+  (t) => [uniqueIndex('user_identity_uq').on(t.provider, t.subject), index('user_identity_user_idx').on(t.userId)],
+);
+
 export const sessions = authSchema.table(
   'sessions',
   {

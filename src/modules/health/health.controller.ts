@@ -45,6 +45,7 @@ export class HealthController {
         webPush: this.env.WEBPUSH_VAPID_PUBLIC_KEY ? 'configured' : 'simulated',
         storage: this.env.STORAGE_PROVIDER,
         ai: this.env.AI_PROVIDER === 'mock' ? 'simulated' : this.env.AI_PROVIDER,
+        googleSignIn: this.env.GOOGLE_SIGNIN_CLIENT_ID ? 'on' : 'off',
         embeddings: this.env.EMBEDDINGS_PROVIDER === 'none' ? 'disabled (full-text search only)' : this.env.EMBEDDINGS_PROVIDER,
       },
     };

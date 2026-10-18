@@ -125,3 +125,23 @@ export class ContactVerifyDto {
 export class DisableTotpDto {
   @ApiProperty({ description: 'Must be true to confirm' }) @Equals(true) confirm: boolean;
 }
+
+export class GoogleStartDto {
+  @ApiPropertyOptional({ example: 'https://app.example.com/auth/google/callback', description: 'Defaults to APP_BASE_URL/auth/google/callback; anything else is refused' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  redirectUri?: string;
+
+  @ApiPropertyOptional({ description: 'New accounts: the person confirmed they are 18 or older' }) @IsOptional() @IsBoolean() ageConfirmed?: boolean;
+  @ApiPropertyOptional({ description: 'New accounts: version of terms + privacy notice accepted' }) @IsOptional() @IsString() @MaxLength(40) acceptedPolicyVersion?: string;
+}
+
+export class GoogleVerifyDto extends DeviceInfoDto {
+  @ApiProperty() @IsString() @MaxLength(2048) code: string;
+  @ApiProperty({ description: 'The state Google returned' }) @IsString() @MaxLength(200) state: string;
+  @ApiProperty({ description: 'The signed state from /auth/google/start, kept by the web app in an httpOnly cookie' }) @IsString() @MaxLength(4000) stateToken: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) timezone?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[a-z]{2}(-[A-Z]{2})?$/) locale?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^[A-Z]{2}$/) country?: string;
+}

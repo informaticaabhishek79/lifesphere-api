@@ -2,6 +2,7 @@ import { AttachmentsController } from './attachments/attachments.controller';
 import { AttachmentsService } from './attachments/attachments.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
+import { GoogleSignInService } from './auth/google-signin.service';
 import { HealthController } from './health/health.controller';
 import { DirectoryController, MeController } from './me/me.controller';
 import { MeService } from './me/me.service';
@@ -83,6 +84,7 @@ export const FEATURE_CONTROLLERS = [
 ];
 export const FEATURE_PROVIDERS = [
   AuthService,
+  GoogleSignInService,
   MeService,
   PrivacyService,
   AttachmentsService,

@@ -51,6 +51,17 @@ export const DATA_INVENTORY: InventoryItem[] = [
     onConsentWithdrawal: 'Not applicable',
   },
   {
+    area: 'Security',
+    field: 'Linked Google account (Google\'s account ID only)',
+    purpose: 'Signing in with Google, if you choose to',
+    required: 'opt-in',
+    access: 'You',
+    retention: 'While your account exists',
+    thirdParties: 'Google confirms who you are when you sign in; we receive your name and verified email, nothing else',
+    deletion: 'Removed with the account',
+    onConsentWithdrawal: 'Sign in with a code instead; you can also remove LifeSphere\'s access in your Google account',
+  },
+  {
     area: 'Profile',
     field: 'Display name, avatar, bio',
     purpose: 'Shown to household, contacts and groups you join',

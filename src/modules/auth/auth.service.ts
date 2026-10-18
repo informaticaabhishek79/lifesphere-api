@@ -175,16 +175,19 @@ export class AuthService {
       isNew = true;
     }
 
+    return this.finishLogin(userId, [ch.channel === 'sms' ? 'otp_sms' : 'otp_email'], { deviceName: dto.deviceName, platform: dto.platform }, ip, userAgent, isNew);
+  }
+
+  /** After the first factor: ask for the second factor if the person set one up, otherwise open a session. */
+  async finishLogin(userId: string, amr: string[], device: DeviceInfoDto, ip: string | undefined, userAgent: string | undefined, isNew: boolean): Promise<LoginResult> {
     const [factor] = await this.db
       .select({ id: mfaFactors.id })
       .from(mfaFactors)
       .where(and(eq(mfaFactors.userId, userId), isNotNull(mfaFactors.confirmedAt)))
       .limit(1);
-    const amr = [ch.channel === 'sms' ? 'otp_sms' : 'otp_email'];
-
     if (factor) {
       const exp = new Date(Date.now() + 5 * 60_000);
-      const mfaToken = await new SignJWT({ amr, deviceName: dto.deviceName ?? null, platform: dto.platform ?? null, purpose: 'mfa' })
+      const mfaToken = await new SignJWT({ amr, deviceName: device.deviceName ?? null, platform: device.platform ?? null, purpose: 'mfa' })
         .setProtectedHeader({ alg: 'HS256' })
         .setSubject(userId)
         .setIssuedAt()
@@ -192,8 +195,7 @@ export class AuthService {
         .sign(this.mfaSecret);
       return { status: 'mfa_required', mfaToken, mfaTokenExpiresAt: exp.toISOString() };
     }
-
-    const pair = await this.createSession(userId, amr, { deviceName: dto.deviceName, platform: dto.platform }, ip, userAgent, false);
+    const pair = await this.createSession(userId, amr, device, ip, userAgent, false);
     return { status: 'authenticated', user: { id: userId, isNew }, ...pair };
   }
 

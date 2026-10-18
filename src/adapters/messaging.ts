@@ -29,6 +29,7 @@ export class SmsAdapter {
   async send(toE164: string, template: SmsTemplate, vars: Record<string, string>): Promise<DeliveryResult> {
     const provider = this.env.SMS_PROVIDER === 'routed' ? (toE164.startsWith('+91') ? 'msg91' : 'twilio') : this.env.SMS_PROVIDER;
     if (provider === 'twilio') return this.sendTwilio(toE164, template, vars);
+    if (provider === 'whatsapp') return this.sendWhatsApp(toE164, template, vars);
     if (provider === 'mock') {
       simulatedOutbox.push({ channel: 'sms', to: toE164, template, vars, at: new Date() });
       if (simulatedOutbox.length > 500) simulatedOutbox.shift();
@@ -56,6 +57,50 @@ export class SmsAdapter {
       return { status: 'sent', provider: 'msg91', providerMessageId: body.message };
     } catch (e) {
       return { status: 'failed', provider: 'msg91', error: (e as Error).message.slice(0, 280) };
+    }
+  }
+
+  /**
+   * WhatsApp Cloud API (Meta). Business-initiated messages must use approved templates:
+   * - codes: an Authentication template; the code fills the body and the "Copy code" button.
+   * - alerts: a Utility template with one body variable, e.g. "LifeSphere: {{1}}".
+   */
+  private async sendWhatsApp(toE164: string, template: SmsTemplate, vars: Record<string, string>): Promise<DeliveryResult> {
+    const e = this.env;
+    if (!e.WHATSAPP_TOKEN || !e.WHATSAPP_PHONE_NUMBER_ID) return { status: 'failed', provider: 'whatsapp', error: 'WhatsApp is not configured', permanent: true };
+    // The template already says "LifeSphere", so the SMS-style prefix is dropped. WhatsApp parameters may not
+    // contain new lines or long runs of spaces.
+    const text = template === 'otp' ? vars.otp : (vars.var1 ?? '').replace(/^LifeSphere:\s*/i, '').replace(/\s+/g, ' ').trim().slice(0, 900);
+    if (!text) return { status: 'failed', provider: 'whatsapp', error: 'Empty message', permanent: true };
+    const components =
+      template === 'otp'
+        ? [
+            { type: 'body', parameters: [{ type: 'text', text }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text }] },
+          ]
+        : [{ type: 'body', parameters: [{ type: 'text', text }] }];
+    try {
+      const res = await fetch(`https://graph.facebook.com/${e.WHATSAPP_API_VERSION}/${e.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${e.WHATSAPP_TOKEN}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: toE164.replace(/^\+/, ''),
+          type: 'template',
+          template: { name: template === 'otp' ? e.WHATSAPP_OTP_TEMPLATE : e.WHATSAPP_ALERT_TEMPLATE, language: { code: e.WHATSAPP_TEMPLATE_LANGUAGE }, components },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const out = (await res.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string; code?: number; error_data?: { details?: string } } };
+      if (!res.ok || !out.messages?.[0]?.id) {
+        const msg = [out.error?.message, out.error?.error_data?.details].filter(Boolean).join(' — ') || 'error';
+        this.logger.warn(`WhatsApp ${template} failed: HTTP ${res.status} ${msg}`);
+        // 4xx other than rate limits (130429/131056) won't succeed on retry.
+        return { status: 'failed', provider: 'whatsapp', error: `HTTP ${res.status}: ${msg}`.slice(0, 280), permanent: res.status >= 400 && res.status < 500 && res.status !== 429 };
+      }
+      return { status: 'sent', provider: 'whatsapp', providerMessageId: out.messages[0].id };
+    } catch (err) {
+      return { status: 'failed', provider: 'whatsapp', error: (err as Error).message.slice(0, 280) };
     }
   }
 

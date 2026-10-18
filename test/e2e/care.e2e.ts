@@ -112,9 +112,11 @@ describe('Parent care: a son invites his mother, she shares back, sets up her da
     await ctx.db.execute(sql`update check_in_events set due_at = now() - interval '25 minutes' where id = ${med.id}`);
     await svc.tick();
     await ctx.db.execute(sql`update check_in_events set reminded_at = now() - interval '41 minutes' where id = ${med.id}`);
+    // Her son also signs in by email: the alert must reach him there too, not only in the app.
+    await ctx.db.execute(sql`update users set email = 'arjun@example.com', email_verified_at = now() where id = ${son.id}`);
     expect((await svc.tick()).escalated).toBe(1);
     const jobs = (await ctx.db.execute(sql`select channel from notification_jobs where user_id = ${son.id} and template = 'checkin_missed_alert'`)).rows as { channel: string }[];
-    expect(jobs.map((j) => j.channel)).toContain('sms');
+    expect(jobs.map((j) => j.channel)).toEqual(expect.arrayContaining(['sms', 'email', 'push']));
     // Text messages can show on a lock screen, so they never name the medicine.
     expect(words('medicine').missedSms('Kamla')).not.toContain('BP tablet');
     expect(words('medicine').sms('BP tablet')).not.toContain('BP tablet');

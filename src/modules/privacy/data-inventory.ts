@@ -112,7 +112,7 @@ export const DATA_INVENTORY: InventoryItem[] = [
     required: 'opt-in',
     access: 'You; contacts with checkins.view or checkins.alerts',
     retention: 'Events kept 90 days',
-    thirdParties: 'SMS/push providers to deliver alerts. SMS never names a medicine; push shows names only if you choose full lock-screen detail',
+    thirdParties: 'SMS/WhatsApp, email and push providers to deliver alerts. Texts never name a medicine and email subjects stay generic; push shows names only if you choose full lock-screen detail',
     deletion: 'Delete schedules; events purged after 90 days',
     onConsentWithdrawal: 'Escalations stop; reminders to you continue only if the schedule stays active',
   },

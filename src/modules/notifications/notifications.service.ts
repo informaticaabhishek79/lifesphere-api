@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { EmailAdapter, PushAdapter, SmsAdapter } from '../../adapters/messaging';
+import { Env, ENV } from '../../config/env';
 import { Database, DB, DbOrTx } from '../../db/db';
 import {
   notificationDevices,
@@ -51,8 +52,9 @@ const DEFAULT_PREFS: Record<Category, { inApp: boolean; push: boolean; email: bo
   tasks: { inApp: true, push: true, email: false, sms: false, bypassQuietHours: false },
   household: { inApp: true, push: true, email: false, sms: false, bypassQuietHours: false },
   family: { inApp: true, push: true, email: false, sms: false, bypassQuietHours: false },
-  checkins: { inApp: true, push: true, email: false, sms: true, bypassQuietHours: true },
-  help: { inApp: true, push: true, email: false, sms: true, bypassQuietHours: true },
+  // Email is on by default for these: it is the channel most likely to reach someone when SMS/WhatsApp isn't set up.
+  checkins: { inApp: true, push: true, email: true, sms: true, bypassQuietHours: true },
+  help: { inApp: true, push: true, email: true, sms: true, bypassQuietHours: true },
   community: { inApp: true, push: false, email: false, sms: false, bypassQuietHours: false },
   services: { inApp: true, push: true, email: false, sms: false, bypassQuietHours: false },
   consumer: { inApp: true, push: true, email: false, sms: false, bypassQuietHours: false },
@@ -108,6 +110,7 @@ export class NotificationsService {
 
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(ENV) private readonly env: Env,
     private readonly queue: QueueService,
     private readonly sms: SmsAdapter,
     private readonly email: EmailAdapter,
@@ -174,6 +177,9 @@ export class NotificationsService {
       input.critical || prefs.bypassQuietHours ? null : quietHoursEnd(new Date(), ctx.quietStart, ctx.quietEnd, ctx.tz ?? 'UTC');
 
     const wanted = new Set(input.channels ?? ['push']);
+    // Safety-critical alerts that ask for a text message also go by email (if the person keeps email on for this
+    // category), so a missed check-in or a help request still reaches someone who isn't watching the app.
+    if (input.critical && wanted.has('sms')) wanted.add('email');
     const channels: Exclude<Channel, 'in_app'>[] = [];
     if (wanted.has('push') && prefs.push) channels.push('push');
     if (wanted.has('sms') && prefs.sms && ctx.phone && ctx.phoneVerified) channels.push('sms');
@@ -207,8 +213,9 @@ export class NotificationsService {
           data: input.data ?? {},
           critical: !!input.critical,
           smsText: (input.smsText ?? `${GENERIC_TITLES[input.category]}: please open LifeSphere`).slice(0, 120),
-          emailSubject: input.emailSubject ?? GENERIC_TITLES[input.category],
-          emailText: input.emailText ?? `${input.title}\n\n${input.body ?? ''}\n\nOpen LifeSphere to see details.`,
+          // The subject can show in inbox previews, so it stays generic; the details are inside the email.
+          emailSubject: input.emailSubject ?? `LifeSphere: ${GENERIC_TITLES[input.category]}${input.critical ? ' — please check' : ''}`,
+          emailText: input.emailText ?? `${input.title}\n\n${input.body ? `${input.body}\n\n` : ''}Open LifeSphere: ${this.env.APP_BASE_URL}\n\nYou get these emails because of your LifeSphere notification settings. You can change them in Notifications → Settings.`,
         },
         { startAfter: quietEnd ?? undefined, retryLimit: input.critical ? 8 : 4, retryDelay: input.critical ? 15 : 60 },
       );

@@ -81,6 +81,7 @@ Full list: [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md).
 - `GET /v1/countries` lists every supported country with its dialling code, currency, emergency number, time zone and main language. The table is in `src/common/countries.ts`; check emergency numbers for each market before launch.
 - **Localities** are seeded for India plus a starter set in the UK, US, Canada, Australia, UAE, Saudi Arabia, Singapore, Germany, France, Spain and Bangladesh; add more in the staff console (Catalogue).
 - **SMS:** `SMS_PROVIDER=msg91` (India), `twilio` (worldwide), or `routed` (`+91` via MSG91, everything else via Twilio). Twilio needs `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`.
+- **WhatsApp instead of SMS:** `SMS_PROVIDER=whatsapp` sends sign-in codes and alerts through the WhatsApp Cloud API (Meta), so no DLT registration is needed. Set `WHATSAPP_TOKEN` (a permanent System User token), `WHATSAPP_PHONE_NUMBER_ID`, and approve two templates in WhatsApp Manager: an **Authentication** template (`WHATSAPP_OTP_TEMPLATE`, default `lifesphere_code`, with a *Copy code* button) and a **Utility** template (`WHATSAPP_ALERT_TEMPLATE`, default `lifesphere_alert`) whose body has one variable, e.g. `LifeSphere: {{1}}`. Template language: `WHATSAPP_TEMPLATE_LANGUAGE` (default `en`).
 - **Daily jobs** (digest, retention) run at 08:00 / 02:30 in `JOBS_TIMEZONE` (default `UTC`; set `Asia/Kolkata` to keep the old India timing).
 - The assistant and complaint drafts are told the person's country, emergency number and language.
 

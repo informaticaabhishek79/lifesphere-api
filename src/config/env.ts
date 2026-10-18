@@ -57,7 +57,16 @@ const schema = z
     STAFF_REQUIRE_MFA: bool.default(true),
 
     /** mock | msg91 (India) | twilio (worldwide) | routed (+91 via MSG91, everything else via Twilio) */
-    SMS_PROVIDER: z.enum(['mock', 'msg91', 'twilio', 'routed']).default('mock'),
+    /** 'whatsapp' sends sign-in codes and alerts by WhatsApp (Meta Cloud API) instead of SMS: no DLT needed in India. */
+    SMS_PROVIDER: z.enum(['mock', 'msg91', 'twilio', 'routed', 'whatsapp']).default('mock'),
+    WHATSAPP_TOKEN: z.string().optional(),
+    WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+    WHATSAPP_API_VERSION: z.string().default('v23.0'),
+    /** Approved "Authentication" template (one-time code with a Copy code button). */
+    WHATSAPP_OTP_TEMPLATE: z.string().default('lifesphere_code'),
+    /** Approved "Utility" template whose body has one variable {{1}} for the alert text. */
+    WHATSAPP_ALERT_TEMPLATE: z.string().default('lifesphere_alert'),
+    WHATSAPP_TEMPLATE_LANGUAGE: z.string().default('en'),
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
     TWILIO_FROM: z.string().optional(),
@@ -142,6 +151,8 @@ const schema = z
       ctx.addIssue({ code: 'custom', path: ['MSG91_AUTH_KEY'], message: `required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
     if ((env.SMS_PROVIDER === 'twilio' || env.SMS_PROVIDER === 'routed') && !(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID)))
       ctx.addIssue({ code: 'custom', path: ['TWILIO_ACCOUNT_SID'], message: `Twilio account SID, auth token and a sender are required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
+    if (env.SMS_PROVIDER === 'whatsapp' && !(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID))
+      ctx.addIssue({ code: 'custom', path: ['WHATSAPP_TOKEN'], message: 'WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required when SMS_PROVIDER=whatsapp' });
     if (!!env.GOOGLE_CLIENT_ID !== !!env.GOOGLE_CLIENT_SECRET)
       ctx.addIssue({ code: 'custom', path: ['GOOGLE_CLIENT_SECRET'], message: 'set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither' });
     if (!!env.MICROSOFT_CLIENT_ID !== !!env.MICROSOFT_CLIENT_SECRET)

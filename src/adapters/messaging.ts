@@ -30,6 +30,7 @@ export class SmsAdapter {
     const provider = this.env.SMS_PROVIDER === 'routed' ? (toE164.startsWith('+91') ? 'msg91' : 'twilio') : this.env.SMS_PROVIDER;
     if (provider === 'twilio') return this.sendTwilio(toE164, template, vars);
     if (provider === 'whatsapp') return this.sendWhatsApp(toE164, template, vars);
+    if (provider === 'twilio_whatsapp') return this.sendTwilioWhatsApp(toE164, template, vars);
     if (provider === 'mock') {
       simulatedOutbox.push({ channel: 'sms', to: toE164, template, vars, at: new Date() });
       if (simulatedOutbox.length > 500) simulatedOutbox.shift();
@@ -101,6 +102,55 @@ export class SmsAdapter {
       return { status: 'sent', provider: 'whatsapp', providerMessageId: out.messages[0].id };
     } catch (err) {
       return { status: 'failed', provider: 'whatsapp', error: (err as Error).message.slice(0, 280) };
+    }
+  }
+
+  /**
+   * WhatsApp through Twilio's Messages API. Messages LifeSphere starts (codes, alerts) need approved Content
+   * templates outside a 24-hour chat window: TWILIO_WHATSAPP_OTP_CONTENT_SID (an Authentication template, the code
+   * is variable 1) and TWILIO_WHATSAPP_ALERT_CONTENT_SID (a Utility template whose body has one variable {{1}}).
+   * Without a template SID the text is sent as a plain message, which only works in the sandbox or an open chat.
+   */
+  private async sendTwilioWhatsApp(toE164: string, template: SmsTemplate, vars: Record<string, string>): Promise<DeliveryResult> {
+    const e = this.env;
+    const sid = e.TWILIO_ACCOUNT_SID;
+    const token = e.TWILIO_AUTH_TOKEN;
+    if (!sid || !token || !(e.TWILIO_WHATSAPP_FROM || e.TWILIO_MESSAGING_SERVICE_SID))
+      return { status: 'failed', provider: 'twilio_whatsapp', error: 'WhatsApp via Twilio is not configured', permanent: true };
+    const wa = (n: string) => (n.startsWith('whatsapp:') ? n : `whatsapp:${n.trim()}`);
+    // The alert template already says "LifeSphere"; template variables may not contain new lines.
+    const text = template === 'otp' ? vars.otp : (vars.var1 ?? '').replace(/^LifeSphere:\s*/i, '').replace(/\s+/g, ' ').trim().slice(0, 900);
+    if (!text) return { status: 'failed', provider: 'twilio_whatsapp', error: 'Empty message', permanent: true };
+    const contentSid = template === 'otp' ? e.TWILIO_WHATSAPP_OTP_CONTENT_SID : e.TWILIO_WHATSAPP_ALERT_CONTENT_SID;
+    const form = new URLSearchParams({ To: wa(toE164) });
+    if (e.TWILIO_MESSAGING_SERVICE_SID) form.set('MessagingServiceSid', e.TWILIO_MESSAGING_SERVICE_SID);
+    if (e.TWILIO_WHATSAPP_FROM) form.set('From', wa(e.TWILIO_WHATSAPP_FROM));
+    // Twilio reports "delivered" or "undelivered" (e.g. the number isn't on WhatsApp) later, to our webhook.
+    if (e.API_BASE_URL.startsWith('https://') && e.WEBHOOK_SECRET)
+      form.set('StatusCallback', `${e.API_BASE_URL.replace(/\/$/, '')}/v1/notifications/webhooks/twilio/status?token=${encodeURIComponent(e.WEBHOOK_SECRET)}`);
+    if (contentSid) {
+      form.set('ContentSid', contentSid);
+      form.set('ContentVariables', JSON.stringify({ '1': text }));
+    } else {
+      form.set('Body', template === 'otp' ? `${text} is your LifeSphere code. It expires in 10 minutes. Never share it.` : `LifeSphere update: ${text} Open the LifeSphere app for details.`);
+    }
+    try {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: 'POST',
+        headers: { authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' },
+        body: form,
+        signal: AbortSignal.timeout(10_000),
+      });
+      const out = (await res.json().catch(() => ({}))) as { sid?: string; message?: string; code?: number; status?: string };
+      if (!res.ok || !out.sid) {
+        const msg = `${out.code ? `${out.code} ` : ''}${out.message ?? 'error'}`;
+        this.logger.warn(`WhatsApp (Twilio) ${template} failed: HTTP ${res.status} ${msg}`);
+        // Bad requests and auth errors won't succeed on retry; rate limits and server errors might.
+        return { status: 'failed', provider: 'twilio_whatsapp', error: `HTTP ${res.status}: ${msg}`.slice(0, 280), permanent: res.status >= 400 && res.status < 500 && res.status !== 429 };
+      }
+      return { status: 'sent', provider: 'twilio_whatsapp', providerMessageId: out.sid };
+    } catch (err) {
+      return { status: 'failed', provider: 'twilio_whatsapp', error: (err as Error).message.slice(0, 280) };
     }
   }
 

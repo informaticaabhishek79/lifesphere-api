@@ -200,6 +200,28 @@ export class NotificationsController {
     return { publicKey: this.push.vapidPublicKey };
   }
 
+  /**
+   * Twilio message status callbacks (form-encoded: MessageSid, MessageStatus, ErrorCode). Authenticated with the
+   * shared webhook secret in the callback address LifeSphere gives Twilio with each message.
+   */
+  @Public()
+  @Post('webhooks/twilio/status')
+  @HttpCode(200)
+  async twilioStatus(@Query('token') token: string, @Body() body: Record<string, string>) {
+    if (!token || !this.crypto.safeEqualHex(this.crypto.sha256(token), this.crypto.sha256(this.env.WEBHOOK_SECRET))) {
+      throw forbidden('Invalid webhook token', 'webhook_unauthorized');
+    }
+    const sid = String(body?.MessageSid ?? '').slice(0, 120);
+    const status = String(body?.MessageStatus ?? '');
+    if (!sid) return { updated: 0 };
+    if (status === 'delivered' || status === 'read') return { updated: await this.svc.applyDeliveryReport('twilio_whatsapp', sid, true) };
+    if (status === 'failed' || status === 'undelivered') {
+      const reason = `Twilio ${status}${body.ErrorCode ? ` (error ${String(body.ErrorCode).slice(0, 10)})` : ''}`;
+      return { updated: await this.svc.applyDeliveryReport('twilio_whatsapp', sid, false, reason) };
+    }
+    return { updated: 0 };
+  }
+
   /** Delivery reports from SMS/email providers. Authenticated with the shared webhook secret. */
   @Public()
   @Post('webhooks/:provider/delivery')

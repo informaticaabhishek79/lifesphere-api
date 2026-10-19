@@ -169,6 +169,24 @@ describe('FamilyCare: contacts, grants, check-ins, help', () => {
     expect(row.status).toBe('delivered');
   });
 
+  it('Twilio WhatsApp status callbacks mark alerts delivered or undelivered', async () => {
+    const notifications = ctx.app.get(NotificationsService);
+    const a = (await notifications.notify({ userId: daughter.id, category: 'help', template: 't', title: 'x', channels: ['sms'], critical: true })).jobs[0].id;
+    const b = (await notifications.notify({ userId: daughter.id, category: 'help', template: 't', title: 'y', channels: ['sms'], critical: true })).jobs[0].id;
+    await ctx.db.execute(sql`update notification_jobs set provider = 'twilio_whatsapp', provider_message_id = 'SMa', status = 'sent' where id = ${a}`);
+    await ctx.db.execute(sql`update notification_jobs set provider = 'twilio_whatsapp', provider_message_id = 'SMb', status = 'sent' where id = ${b}`);
+    const url = '/v1/notifications/webhooks/twilio/status';
+    await ctx.http.post(`${url}?token=wrong`).type('form').send({ MessageSid: 'SMa', MessageStatus: 'delivered' }).expect(403);
+    // Twilio sends form-encoded bodies with many extra fields.
+    const ok = await ctx.http.post(`${url}?token=change-me-webhook-secret`).type('form').send({ MessageSid: 'SMa', MessageStatus: 'delivered', AccountSid: 'AC1', To: 'whatsapp:+91', ApiVersion: '2010-04-01' }).expect(200);
+    expect(ok.body.updated).toBe(1);
+    await ctx.http.post(`${url}?token=change-me-webhook-secret`).type('form').send({ MessageSid: 'SMb', MessageStatus: 'sent' }).expect(200);
+    await ctx.http.post(`${url}?token=change-me-webhook-secret`).type('form').send({ MessageSid: 'SMb', MessageStatus: 'undelivered', ErrorCode: '63016' }).expect(200);
+    const rows = (await ctx.db.execute(sql`select id, status, last_error from notification_jobs where id in (${a}, ${b})`)).rows as { id: string; status: string; last_error: string | null }[];
+    expect(rows.find((r) => r.id === a)?.status).toBe('delivered');
+    expect(rows.find((r) => r.id === b)).toMatchObject({ status: 'failed', last_error: 'Twilio undelivered (error 63016)' });
+  });
+
   it('revoking a grant removes the contact from escalation lists and access ends', async () => {
     const grants = await ctx.http.get('/v1/grants?direction=given').set(auth(senior)).expect(200);
     const alerts = grants.body.find((g: { scope: string }) => g.scope === 'checkins.alerts');

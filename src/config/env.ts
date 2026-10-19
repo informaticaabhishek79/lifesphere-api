@@ -58,7 +58,7 @@ const schema = z
 
     /** mock | msg91 (India) | twilio (worldwide) | routed (+91 via MSG91, everything else via Twilio) */
     /** 'whatsapp' sends sign-in codes and alerts by WhatsApp (Meta Cloud API) instead of SMS: no DLT needed in India. */
-    SMS_PROVIDER: z.enum(['mock', 'msg91', 'twilio', 'routed', 'whatsapp']).default('mock'),
+    SMS_PROVIDER: z.enum(['mock', 'msg91', 'twilio', 'routed', 'whatsapp', 'twilio_whatsapp']).default('mock'),
     WHATSAPP_TOKEN: z.string().optional(),
     WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
     WHATSAPP_API_VERSION: z.string().default('v23.0'),
@@ -71,6 +71,11 @@ const schema = z
     TWILIO_AUTH_TOKEN: z.string().optional(),
     TWILIO_FROM: z.string().optional(),
     TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+    /** WhatsApp through Twilio: the WhatsApp-enabled sender, e.g. +14155238886 (sandbox) or your approved number. */
+    TWILIO_WHATSAPP_FROM: z.string().optional(),
+    /** Content template SIDs (HX…) approved for WhatsApp. Without them, plain text is sent (only works inside a 24-hour chat window, e.g. the sandbox). */
+    TWILIO_WHATSAPP_OTP_CONTENT_SID: z.string().optional(),
+    TWILIO_WHATSAPP_ALERT_CONTENT_SID: z.string().optional(),
     MSG91_AUTH_KEY: z.string().optional(),
     MSG91_SENDER_ID: z.string().optional(),
     MSG91_OTP_TEMPLATE_ID: z.string().optional(),
@@ -154,6 +159,8 @@ const schema = z
       ctx.addIssue({ code: 'custom', path: ['MSG91_AUTH_KEY'], message: `required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
     if ((env.SMS_PROVIDER === 'twilio' || env.SMS_PROVIDER === 'routed') && !(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID)))
       ctx.addIssue({ code: 'custom', path: ['TWILIO_ACCOUNT_SID'], message: `Twilio account SID, auth token and a sender are required when SMS_PROVIDER=${env.SMS_PROVIDER}` });
+    if (env.SMS_PROVIDER === 'twilio_whatsapp' && !(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && (env.TWILIO_WHATSAPP_FROM || env.TWILIO_MESSAGING_SERVICE_SID)))
+      ctx.addIssue({ code: 'custom', path: ['TWILIO_WHATSAPP_FROM'], message: 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM (or TWILIO_MESSAGING_SERVICE_SID) are required when SMS_PROVIDER=twilio_whatsapp' });
     if (env.SMS_PROVIDER === 'whatsapp' && !(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID))
       ctx.addIssue({ code: 'custom', path: ['WHATSAPP_TOKEN'], message: 'WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required when SMS_PROVIDER=whatsapp' });
     if (!!env.GOOGLE_SIGNIN_CLIENT_ID !== !!env.GOOGLE_SIGNIN_CLIENT_SECRET)

@@ -12,7 +12,7 @@ import { RemindersService } from './reminders.service';
 
 const CHANNELS = ['in_app', 'push', 'email', 'sms'] as const;
 
-class CreateReminderDto {
+export class CreateReminderDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) title: string;
   @ApiProperty({ example: '2026-10-20T09:00:00+05:30' }) @IsDateString() fireAt: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() taskId?: string;

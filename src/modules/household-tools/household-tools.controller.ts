@@ -23,7 +23,7 @@ class UpdateShoppingListDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() archived?: boolean;
 }
 
-class CreateListItemDto {
+export class CreateListItemDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(120) name: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100000) quantity?: number;
   @ApiPropertyOptional({ example: 'kg' }) @IsOptional() @IsString() @MaxLength(20) unit?: string;
@@ -44,7 +44,7 @@ class UpdateListItemDto {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-class InventoryDto {
+export class InventoryDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(120) name: string;
   @ApiProperty({ example: 'appliance' }) @IsString() @MinLength(1) @MaxLength(40) category: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) brand?: string;
@@ -63,7 +63,7 @@ class InventoryQuery extends HouseholdScopeQuery {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) category?: string;
 }
 
-class MaintenanceScheduleDto {
+export class MaintenanceScheduleDto {
   @ApiProperty({ example: 'Clean AC filter' }) @IsString() @MinLength(1) @MaxLength(120) title: string;
   @ApiProperty({ example: 90 }) @Type(() => Number) @IsInt() @Min(1) @Max(3650) intervalDays: number;
   @ApiProperty({ example: '2026-11-01' }) @Matches(DATE) nextDueOn: string;
@@ -87,7 +87,7 @@ class BudgetQuery extends HouseholdScopeQuery {
   @ApiProperty({ example: '2026-10-01' }) @Matches(/^\d{4}-\d{2}-01$/) month: string;
 }
 
-class BudgetLineDto {
+export class BudgetLineDto {
   @ApiProperty({ example: '2026-10-01' }) @Matches(/^\d{4}-\d{2}-01$/) month: string;
   @ApiProperty({ example: 'Groceries' }) @IsString() @MinLength(1) @MaxLength(40) category: string;
   @ApiProperty() @IsNumber() @Min(0) @Max(1e10) plannedAmount: number;

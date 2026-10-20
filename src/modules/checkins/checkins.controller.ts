@@ -7,7 +7,7 @@ import { CheckinsService } from './checkins.service';
 
 const KINDS = ['daily', 'weekly', 'one_off', 'visit_confirmation', 'assistance_confirmation'] as const;
 
-class CheckInScheduleDto {
+export class CheckInScheduleDto {
   @ApiProperty({ example: 'Morning check-in' }) @IsString() @MinLength(1) @MaxLength(80) label: string;
   @ApiPropertyOptional({ enum: ['wellbeing', 'medicine'], default: 'wellbeing', description: '"Are you OK?" or "Did you take your medicine?"' })
   @IsOptional()

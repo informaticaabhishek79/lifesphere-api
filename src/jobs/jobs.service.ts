@@ -37,6 +37,7 @@ import { ModerationService } from '../modules/moderation/moderation.service';
 import { NotificationsService } from '../modules/notifications/notifications.service';
 import { PrivacyService } from '../modules/privacy/privacy.service';
 import { RemindersService } from '../modules/reminders/reminders.service';
+import { InboxService } from '../modules/inbox/inbox.service';
 
 
 /**
@@ -65,6 +66,7 @@ export class JobsService implements OnApplicationBootstrap {
     private readonly admin: AdminService,
     private readonly documents: DocumentsService,
     private readonly agents: AgentsService,
+    private readonly inbox: InboxService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -85,10 +87,13 @@ export class JobsService implements OnApplicationBootstrap {
     await work(JOBS.retentionPurge, () => this.retentionPurge());
     await work(JOBS.privacyDeletionSweep, () => this.privacy.runDeletionSweep());
     await work(JOBS.householdDailyTick, () => this.dailyTick());
+    await work<{ importId: string }>(JOBS.inboxProcess, (d) => this.inbox.process(d.importId), { batchSize: 2, pollingIntervalSeconds: 2 });
+    await work(JOBS.inboxScan, () => this.inbox.scanAll());
 
     await boss.schedule(JOBS.checkinTick, '* * * * *', {}, { tz: this.env.JOBS_TIMEZONE, singletonKey: 'checkin-tick' });
     await boss.schedule(JOBS.grantsActivate, '* * * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     await boss.schedule(JOBS.heartbeat, '* * * * *', {}, { tz: this.env.JOBS_TIMEZONE });
+    await boss.schedule(JOBS.inboxScan, '*/5 * * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     await boss.schedule(JOBS.retentionPurge, '30 2 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     await boss.schedule(JOBS.privacyDeletionSweep, '0 3 * * *', {}, { tz: this.env.JOBS_TIMEZONE });
     await boss.schedule(JOBS.householdDailyTick, '0 8 * * *', {}, { tz: this.env.JOBS_TIMEZONE });

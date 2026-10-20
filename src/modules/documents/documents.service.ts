@@ -255,7 +255,14 @@ export class DocumentsService {
       })
       .returning();
     await this.audit.system({ action: byAgentId ? 'agent.file_created' : 'documents.file_uploaded', targetType: 'doc_file', targetId: row.id, subjectUserId: ownerId, metadata: { agentId: byAgentId } });
+    this.emitFile(row);
     return row;
+  }
+
+  /** Told about every file stored or moved into a folder (the smart inbox listens). Never affects the upload. */
+  readonly fileListeners: ((file: File) => unknown)[] = [];
+  private emitFile(file: File) {
+    for (const listener of this.fileListeners) void Promise.resolve().then(() => listener(file)).catch(() => undefined);
   }
 
   async createTextFile(ownerId: string, folderId: string, name: string, content: string, byAgentId: string | null = null) {
@@ -303,6 +310,7 @@ export class DocumentsService {
       .set({ folderId, name: await this.uniqueName(folderId, f.name, f.id), lastChangedByAgentId: byAgentId })
       .where(eq(docFiles.id, id))
       .returning();
+    this.emitFile(row);
     return row;
   }
 

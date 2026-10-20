@@ -8,3 +8,4 @@ export * from './community';
 export * from './providers';
 export * from './knowledge';
 export * from './agents';
+export * from './inbox';

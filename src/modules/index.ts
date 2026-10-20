@@ -46,6 +46,8 @@ import { VoiceController } from './voice/voice.controller';
 import { VoiceService } from './voice/voice.service';
 import { CareController } from './care/care.controller';
 import { CareService } from './care/care.service';
+import { InboxController } from './inbox/inbox.controller';
+import { InboxService } from './inbox/inbox.service';
 
 export const FEATURE_CONTROLLERS = [
   HealthController,
@@ -81,6 +83,7 @@ export const FEATURE_CONTROLLERS = [
   AgentsController,
   VoiceController,
   CareController,
+  InboxController,
 ];
 export const FEATURE_PROVIDERS = [
   AuthService,
@@ -109,4 +112,5 @@ export const FEATURE_PROVIDERS = [
   AgentsService,
   VoiceService,
   CareService,
+  InboxService,
 ];

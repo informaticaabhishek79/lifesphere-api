@@ -51,6 +51,17 @@ export const DATA_INVENTORY: InventoryItem[] = [
     onConsentWithdrawal: 'Not applicable',
   },
   {
+    area: 'Documents',
+    field: 'Smart inbox: which files arrived, what was recognised in them and what was added',
+    purpose: 'Turning documents you put in your inbox folder into tasks, reminders, events, lists and records, and letting you undo that',
+    required: 'opt-in',
+    access: 'You',
+    retention: 'While your account exists; remove it by deleting the inbox folder or your account',
+    thirdParties: 'Only if you turn on AI reading: the file is sent to our AI provider (Anthropic) to be read, and not used for training. Without it, only text files are read, on our servers',
+    deletion: 'Removed with the account',
+    onConsentWithdrawal: 'Turning AI reading off stops sending files; PDFs and photos then wait for you',
+  },
+  {
     area: 'Security',
     field: 'Linked Google account (Google\'s account ID only)',
     purpose: 'Signing in with Google, if you choose to',

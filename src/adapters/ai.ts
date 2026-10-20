@@ -115,6 +115,40 @@ export class AiAdapter {
     return { content: body.content ?? [], stopReason: body.stop_reason ?? 'end_turn', model: body.model ?? this.env.AI_MODEL };
   }
 
+  /**
+   * Structured extraction: the model must answer by calling `tool` once, so the result is data in a fixed
+   * shape. `content` may include a PDF or an image for the model to read. Returns null in mock mode.
+   */
+  async extract(
+    system: string,
+    content: ({ type: 'text'; text: string } | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } })[],
+    tool: AiTool,
+    maxTokens = 8000,
+  ): Promise<{ input: Record<string, unknown>; model: string } | null> {
+    if (this.env.AI_PROVIDER === 'mock') return null;
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': this.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: this.env.AI_MODEL,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: 'user', content }],
+        tools: [tool],
+        tool_choice: { type: 'tool', name: tool.name },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      this.logger.warn(`AI provider error ${res.status}: ${err.slice(0, 300)}`);
+      throw aiError(res.status, err);
+    }
+    const body = (await res.json()) as { content?: AiBlock[]; model?: string };
+    const use = (body.content ?? []).find((b): b is Extract<AiBlock, { type: 'tool_use' }> => b.type === 'tool_use' && b.name === tool.name);
+    return use ? { input: use.input, model: body.model ?? this.env.AI_MODEL } : null;
+  }
+
   /** Deterministic, clearly labelled stand-in for development and tests. */
   private mock(system: string, messages: AiMessage[]): AiCompletion {
     const last = messages[messages.length - 1]?.content ?? '';

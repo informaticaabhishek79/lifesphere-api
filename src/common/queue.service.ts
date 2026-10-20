@@ -14,6 +14,8 @@ export const JOBS = {
   knowledgeIngest: 'knowledge.ingest',
   householdDailyTick: 'household.daily-tick',
   heartbeat: 'worker.heartbeat',
+  inboxProcess: 'inbox.process',
+  inboxScan: 'inbox.scan',
 } as const;
 
 export type JobName = (typeof JOBS)[keyof typeof JOBS];

@@ -10,7 +10,7 @@ import { ConsumerService } from './consumer.service';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES = ['draft', 'ready_to_submit', 'submitted_by_user', 'awaiting_response', 'info_required', 'resolved', 'closed'] as const;
 
-class PurchaseCreateDto {
+export class PurchaseCreateDto {
   @ApiProperty({ example: 'washing machine' }) @IsString() @MinLength(1) @MaxLength(60) productCategory: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) brand?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) model?: string;
@@ -29,7 +29,7 @@ class PurchaseQuery {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(3650) expiringWithinDays?: number;
 }
 
-class ConsumerCaseDto {
+export class ConsumerCaseDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) title: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) counterpartyName?: string;

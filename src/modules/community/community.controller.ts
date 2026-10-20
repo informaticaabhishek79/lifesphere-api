@@ -93,7 +93,7 @@ class ModerationAppealDto {
   @ApiProperty() @IsString() @MinLength(10) @MaxLength(2000) statement: string;
 }
 
-class CivicDto {
+export class CivicDto {
   @ApiProperty({ enum: CIVIC }) @IsIn(CIVIC as unknown as string[]) category: (typeof CIVIC)[number];
   @ApiProperty() @IsString() @MinLength(5) @MaxLength(1000) description: string;
   @ApiPropertyOptional({ example: 'Near gate 2 of the park' }) @IsOptional() @IsString() @MaxLength(200) locationText?: string;

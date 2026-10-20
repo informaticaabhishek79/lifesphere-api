@@ -8,7 +8,7 @@ import { CalendarService } from './calendar.service';
 const KINDS = ['appointment', 'visit', 'errand', 'activity', 'other'] as const;
 const VIS = ['private', 'household', 'shared'] as const;
 
-class CreateCalendarEventDto {
+export class CreateCalendarEventDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) title: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @ApiPropertyOptional({ enum: KINDS }) @IsOptional() @IsIn(KINDS as unknown as string[]) kind?: (typeof KINDS)[number];

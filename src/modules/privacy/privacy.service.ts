@@ -324,6 +324,8 @@ export class PrivacyService {
       agentActivity: await this.db.select().from(s.agentRuns).where(eq(s.agentRuns.ownerUserId, userId)),
       linkedSignIns: await this.db.select({ provider: s.userIdentities.provider, linkedAt: s.userIdentities.createdAt, lastUsedAt: s.userIdentities.lastUsedAt }).from(s.userIdentities).where(eq(s.userIdentities.userId, userId)),
       voiceAssistantSettings: await this.db.select().from(s.assistantSettings).where(eq(s.assistantSettings.userId, userId)),
+      smartInboxSettings: await this.db.select().from(s.inboxSettings).where(eq(s.inboxSettings.userId, userId)),
+      smartInboxFiles: await this.db.select().from(s.inboxImports).where(eq(s.inboxImports.userId, userId)),
       notifications: await this.db.select().from(s.notifications).where(eq(s.notifications.userId, userId)),
       privacyRequests: await this.db.select().from(s.privacyRequests).where(eq(s.privacyRequests.userId, userId)),
       activityLog: await this.db

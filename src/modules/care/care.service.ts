@@ -45,6 +45,18 @@ export interface SetupInput {
 
 type Status = 'help' | 'missed' | 'waiting' | 'ok' | 'quiet' | 'not_set_up' | 'starting';
 
+export interface WeeklyTally {
+  total: number;
+  completed: number;
+  missed: number;
+}
+export interface WeeklyInsight {
+  medicine: WeeklyTally;
+  wellbeing: WeeklyTally;
+  /** A single plain-language sentence, or null when there's nothing from the last 7 days to summarise. */
+  text: string | null;
+}
+
 /**
  * Family care in one place: a caregiver's view of the people who chose to share with them, and the simple
  * "my day" view for the person being looked after. Everything here reads through the existing grants, so a
@@ -95,6 +107,35 @@ export class CareService {
     return { items, activeSchedules: schedules.length, schedules: schedules.map((s) => ({ ...s, timeLocal: s.timeLocal?.slice(0, 5) ?? null })) };
   }
 
+  /**
+   * A plain-language rollup of the last 7 days, e.g. "Missed medication twice this week" — built from the same
+   * check-in events already shown as "today", never from vitals or any inference beyond what was logged.
+   */
+  private async weeklyInsight(userId: string): Promise<WeeklyInsight> {
+    const now = new Date();
+    const since = addDays(now, -7);
+    const rows = await this.db
+      .select({ purpose: checkInSchedules.purpose, state: checkInEvents.state })
+      .from(checkInEvents)
+      .innerJoin(checkInSchedules, eq(checkInSchedules.id, checkInEvents.scheduleId))
+      .where(and(eq(checkInEvents.userId, userId), gte(checkInEvents.dueAt, since), lt(checkInEvents.dueAt, now)));
+    const tally: Record<'medicine' | 'wellbeing', WeeklyTally> = { medicine: { total: 0, completed: 0, missed: 0 }, wellbeing: { total: 0, completed: 0, missed: 0 } };
+    for (const r of rows) {
+      const key = r.purpose === 'medicine' ? 'medicine' : 'wellbeing';
+      tally[key].total++;
+      if (r.state === 'completed' || r.state === 'acknowledged') tally[key].completed++;
+      else if (r.state === 'missed' || r.state === 'escalated') tally[key].missed++;
+    }
+    const word = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`);
+    const parts: string[] = [];
+    if (tally.medicine.missed > 0) parts.push(`missed medication ${word(tally.medicine.missed)} this week`);
+    if (tally.wellbeing.missed > 0) parts.push(`missed a check-in ${word(tally.wellbeing.missed)} this week`);
+    let text: string | null = null;
+    if (parts.length) text = parts.join(' and ').replace(/^./, (c) => c.toUpperCase());
+    else if (tally.medicine.total + tally.wellbeing.total > 0) text = 'Checked in and confirmed every medicine this week';
+    return { ...tally, text };
+  }
+
   private static status(items: { state: string; purpose: string }[], openHelp: number, schedules: number): Status {
     if (openHelp) return 'help';
     if (items.some((i) => i.state === 'missed' || i.state === 'escalated')) return 'missed';
@@ -120,6 +161,7 @@ export class CareService {
       const [tc] = await this.db.select({ label: trustedContacts.label }).from(trustedContacts).where(and(eq(trustedContacts.userId, actor.userId), eq(trustedContacts.contactUserId, id), isNull(trustedContacts.removedAt)));
       const seesCheckins = live('checkins.view') || live('checkins.alerts');
       const routine = seesCheckins ? await this.routine(id) : null;
+      const weekly = seesCheckins ? await this.weeklyInsight(id) : null;
       let lastCheckInAt: Date | null = null;
       if (seesCheckins) {
         const [last] = await this.db
@@ -155,6 +197,7 @@ export class CareService {
         shares: mine.map((g) => ({ scope: g.scope, status: g.status, effectiveAt: g.effectiveAt })),
         status: (anyLive ? CareService.status(routine?.items ?? [], openHelp.length, routine?.activeSchedules ?? (seesCheckins ? 0 : 1)) : 'starting') as Status,
         today: routine?.items ?? null,
+        weekly,
         lastCheckInAt,
         openHelp,
         appointments: live('calendar.view') ? appointments : null,

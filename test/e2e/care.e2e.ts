@@ -127,6 +127,8 @@ describe('Parent care: a son invites his mother, she shares back, sets up her da
     expect(view.status).toBe('missed');
     expect(view.today.find((i: { id: string }) => i.id === med.id).state).toBe('escalated');
     expect(view.appointments).toBeNull(); // calendar was not shared
+    // The week's rollup counts the missed medicine confirmation, in plain language, from the same events already shown above.
+    expect(view.weekly).toMatchObject({ medicine: { missed: 1 }, text: 'Missed medication once this week' });
 
     // She taps Taken: her son hears she has confirmed.
     await ctx.http.post(`/v1/check-ins/events/${med.id}/complete`).set(auth(mother)).send({}).expect(200);

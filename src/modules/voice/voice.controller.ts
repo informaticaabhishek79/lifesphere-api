@@ -24,6 +24,18 @@ class AskDto {
 class SettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() speakAnswers?: boolean;
   @ApiPropertyOptional({ description: 'Document folders the assistant may read (folders inside included)' }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) documentFolderIds?: string[];
+  @ApiPropertyOptional({ description: 'Open-ended "just talk to me" chat. Off by default — turn it on yourself.' }) @IsOptional() @IsBoolean() companionChatEnabled?: boolean;
+}
+
+class CompanionDto {
+  @ApiProperty({ example: 'How are you today?' }) @IsString() @MinLength(1) @MaxLength(1000) message: string;
+  @ApiPropertyOptional({ type: [TurnDto], description: 'The last few turns, kept by the app; nothing is stored on the server' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12)
+  @ValidateNested({ each: true })
+  @Type(() => TurnDto)
+  history?: TurnDto[];
 }
 
 @ApiTags('voice-assistant')
@@ -46,5 +58,15 @@ export class VoiceController {
   @Put('settings')
   update(@CurrentActor() a: Actor, @Body() dto: SettingsDto) {
     return this.svc.updateSettings(a, dto);
+  }
+
+  /**
+   * Open-ended chat for company, not for answers — separate from `ask`, and off until turned on in settings.
+   * Never reads or changes any LifeSphere data.
+   */
+  @Post('companion')
+  @HttpCode(200)
+  companion(@CurrentActor() a: Actor, @Body() dto: CompanionDto) {
+    return this.svc.companion(a, dto.message, dto.history ?? []);
   }
 }

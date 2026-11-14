@@ -175,5 +175,7 @@ export const assistantSettings = pgTable('assistant_settings', {
   /** Document folders it may search and read (folders inside are included). Empty = no documents. */
   documentFolderIds: uuid('document_folder_ids').array().notNull().default([]),
   speakAnswers: boolean('speak_answers').notNull().default(true),
+  /** Off by default: open-ended "just talk to me" chat, as opposed to the read-only Q&A assistant. */
+  companionChatEnabled: boolean('companion_chat_enabled').notNull().default(false),
   updatedAt: updatedAt(),
 });

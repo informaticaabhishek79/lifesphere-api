@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
-import { AiAdapter, AiBlock, AiToolMessage } from '../../adapters/ai';
+import { AiAdapter, AiBlock, AiMessage, AiToolMessage } from '../../adapters/ai';
 import { Actor } from '../../common/auth-context';
 import { AuditService } from '../../common/audit.service';
 import { countryInfo, countryName, languageName } from '../../common/countries';
@@ -79,10 +79,13 @@ export class VoiceService {
       // Folders deleted since they were chosen drop out.
       documentFolders: ids.filter((id) => paths.has(id)).map((id) => ({ folderId: id, path: paths.get(id)! })),
       aiConnected: !this.ai.simulated,
+      // Off by default: open-ended chat, as opposed to only answering LifeSphere questions. The person turns
+      // this on themselves (ideally with whoever helps them sit with them, same as setting up check-ins).
+      companionChatEnabled: s?.companionChatEnabled ?? false,
     };
   }
 
-  async updateSettings(actor: Actor, dto: { speakAnswers?: boolean; documentFolderIds?: string[] }) {
+  async updateSettings(actor: Actor, dto: { speakAnswers?: boolean; documentFolderIds?: string[]; companionChatEnabled?: boolean }) {
     if (dto.documentFolderIds) {
       const unique = [...new Set(dto.documentFolderIds)];
       if (unique.length) {
@@ -96,12 +99,17 @@ export class VoiceService {
     }
     await this.db
       .insert(assistantSettings)
-      .values({ userId: actor.userId, speakAnswers: dto.speakAnswers ?? true, documentFolderIds: dto.documentFolderIds ?? [] })
+      .values({ userId: actor.userId, speakAnswers: dto.speakAnswers ?? true, documentFolderIds: dto.documentFolderIds ?? [], companionChatEnabled: dto.companionChatEnabled ?? false })
       .onConflictDoUpdate({
         target: assistantSettings.userId,
-        set: { ...(dto.speakAnswers !== undefined ? { speakAnswers: dto.speakAnswers } : {}), ...(dto.documentFolderIds ? { documentFolderIds: dto.documentFolderIds } : {}) },
+        set: {
+          ...(dto.speakAnswers !== undefined ? { speakAnswers: dto.speakAnswers } : {}),
+          ...(dto.documentFolderIds ? { documentFolderIds: dto.documentFolderIds } : {}),
+          ...(dto.companionChatEnabled !== undefined ? { companionChatEnabled: dto.companionChatEnabled } : {}),
+        },
       });
     if (dto.documentFolderIds) await this.audit.record(actor, { action: 'assistant.document_access_changed', targetType: 'user', targetId: actor.userId, metadata: { folders: dto.documentFolderIds.length } });
+    if (dto.companionChatEnabled !== undefined) await this.audit.record(actor, { action: 'assistant.companion_chat_toggled', targetType: 'user', targetId: actor.userId, metadata: { on: dto.companionChatEnabled } });
     return this.settings(actor);
   }
 
@@ -574,5 +582,66 @@ export class VoiceService {
     }
     const text = out.filter(Boolean).join(' ');
     return text || 'That part of the app is switched off, or you haven’t shared it with the assistant.';
+  }
+
+  // ------------------------------------------------------------ companion chat
+  /**
+   * Keyword patterns only — never a clinical judgement, and deliberately erring toward flagging too much rather
+   * than too little. English and a little Hindi, matching the same style as the simulated router above.
+   */
+  private static readonly CONCERN_PATTERNS: { kind: 'lonely' | 'unwell' | 'distress'; re: RegExp }[] = [
+    { kind: 'lonely', re: /\b(lonely|alone|no\s?one (visits|calls|comes)|nobody (visits|calls|comes|cares)|miss (everyone|my family)|isolated)\b|अकेला|अकेली|कोई नहीं आता/i },
+    { kind: 'unwell', re: /\b(don'?t feel (good|well)|feeling (sick|unwell|weak|dizzy)|not feeling (good|well)|in pain|can'?t sleep)\b|तबीयत ठीक नहीं|दर्द हो रहा/i },
+    { kind: 'distress', re: /\b(scared|afraid|give up|hopeless|don'?t want to (be here|go on)|no point|worthless|frightened)\b|डर लगता है|उदास|हार मान/i },
+  ];
+
+  private detectConcern(message: string): 'lonely' | 'unwell' | 'distress' | null {
+    for (const p of VoiceService.CONCERN_PATTERNS) if (p.re.test(message)) return p.kind;
+    return null;
+  }
+
+  private companionReply(message: string): string {
+    const m = message.toLowerCase();
+    if (/hello|hi|hey|नमस्ते/.test(m)) return 'Hello! It is nice to hear from you — how is your day going so far?';
+    return "I'm listening — tell me more, or ask me anything about your day.";
+  }
+
+  /**
+   * Open-ended chat, separate from `ask`: for company, not for answers. It never reads or changes LifeSphere
+   * data (no tools at all — that keeps the scope small and the persona honest), it never speaks as if it has
+   * feelings or an ongoing relationship with the person, and anything suggesting loneliness, illness or distress
+   * is both answered warmly here AND passed along to whoever the person already lets know about missed
+   * check-ins — the same people, the same reason: so they are not carrying it alone.
+   */
+  async companion(actor: Actor, message: string, history: Turn[] = []): Promise<{ reply: string; concern: boolean }> {
+    const { ctx, name, locale } = await this.context(actor);
+    const [s] = await this.db.select({ on: assistantSettings.companionChatEnabled }).from(assistantSettings).where(eq(assistantSettings.userId, actor.userId));
+    if (!s?.on) throw new AppError(409, 'companion_disabled', 'Companion chat is turned off. Turn it on in the assistant settings first.');
+
+    let reply: string;
+    let simulated = true;
+    if (this.ai.simulated) reply = this.companionReply(message);
+    else {
+      simulated = false;
+      const system =
+        `COMPANION_CHAT. You are LifeSphere's companion chat for ${name} — here for everyday conversation: their day, the weather, light chat, a joke, reminiscing, or a general question. Reply in ${languageName(locale)}.\n` +
+        'You are an assistant, not a person and not a friend. Never claim feelings, never say things like "I care about you" or "I am always here for you", and never imply you remember them beyond this conversation. ' +
+        'You have no access to their LifeSphere data here and cannot look anything up — if they ask about their check-ins, medicines, calendar or tasks, tell them to ask the regular assistant instead. ' +
+        'If they mention feeling lonely or isolated, respond warmly and briefly, then gently suggest calling or messaging family. ' +
+        `If they describe feeling unwell or a safety concern, tell them to press Get help or call ${countryInfo(ctx.country).emergency}. ` +
+        'Keep replies short — one to three sentences, warm, never clinical, no markdown, no lists.';
+      const messages: AiMessage[] = [
+        ...history.slice(-MAX_TURNS).map((t) => ({ role: t.role, content: t.text.slice(0, 2000) }) as AiMessage),
+        { role: 'user', content: message.slice(0, 1000) },
+      ];
+      while (messages.length && messages[0].role !== 'user') messages.shift();
+      const res = await this.ai.complete(system, messages, 300);
+      reply = res.text.trim() || "Sorry, I didn't quite catch that — could you say it again?";
+    }
+
+    const concern = this.detectConcern(message);
+    if (concern) await this.care.flagWellbeingConcern(actor, concern);
+    await this.audit.record(actor, { action: 'assistant.companion_chat', targetType: 'user', targetId: actor.userId, metadata: { concern: concern ?? 'none', simulated } });
+    return { reply, concern: !!concern };
   }
 }

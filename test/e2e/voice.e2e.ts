@@ -1,5 +1,5 @@
 import { AiAdapter } from '../../src/adapters/ai';
-import { auth, boot, Ctx, shutdown, signup, TestUser } from '../helpers';
+import { auth, boot, connect, Ctx, shutdown, signup, TestUser } from '../helpers';
 
 describe('Voice assistant: answers from the right part of the app, and only what the person may see', () => {
   let ctx: Ctx;
@@ -123,5 +123,60 @@ describe('Voice assistant: answers from the right part of the app, and only what
     const exp = await ctx.app.get(PrivacyService).collectUserData(u.id);
     expect(exp.voiceAssistantSettings).toHaveLength(1);
     expect(JSON.stringify(exp)).not.toContain('What do I need to buy?');
+  });
+
+  describe('companion chat: off by default, never reads data, and quietly tells family about a wellbeing mention', () => {
+    let caregiver: TestUser;
+
+    beforeAll(async () => {
+      caregiver = await signup(ctx, 'Beta');
+      await connect(ctx, u, caregiver, ['checkins.alerts']);
+    });
+
+    it('is off until turned on in settings', async () => {
+      const off = (await ctx.http.get('/v1/voice/settings').set(auth(u)).expect(200)).body;
+      expect(off.companionChatEnabled).toBe(false);
+      await ctx.http.post('/v1/voice/companion').set(auth(u)).send({ message: 'Hello' }).expect(409);
+      await ctx.http.put('/v1/voice/settings').set(auth(u)).send({ companionChatEnabled: true }).expect(200);
+      const on = (await ctx.http.get('/v1/voice/settings').set(auth(u)).expect(200)).body;
+      expect(on.companionChatEnabled).toBe(true);
+    });
+
+    it('answers ordinary chat with no family alert', async () => {
+      const before = (await ctx.http.get('/v1/notifications').set(auth(caregiver)).expect(200)).body.items.length;
+      const r = await ctx.http.post('/v1/voice/companion').set(auth(u)).send({ message: 'What a nice sunny day today!' }).expect(200);
+      expect(r.body.concern).toBe(false);
+      expect(typeof r.body.reply).toBe('string');
+      expect((await ctx.http.get('/v1/notifications').set(auth(caregiver)).expect(200)).body.items).toHaveLength(before);
+    });
+
+    it('a loneliness mention is answered warmly and told to the same people who get missed-check-in alerts, without quoting her', async () => {
+      const before = (await ctx.http.get('/v1/notifications').set(auth(caregiver)).expect(200)).body.items.length;
+      const r = await ctx.http.post('/v1/voice/companion').set(auth(u)).send({ message: 'I feel so lonely, nobody visits me anymore.' }).expect(200);
+      expect(r.body.concern).toBe(true);
+      const notes = (await ctx.http.get('/v1/notifications').set(auth(caregiver)).expect(200)).body.items;
+      expect(notes).toHaveLength(before + 1);
+      const text = JSON.stringify(notes);
+      expect(text).toContain('mentioned feeling a bit lonely');
+      expect(text).not.toContain('nobody visits me');
+      // A stranger never sees any of this.
+      expect((await ctx.http.get('/v1/notifications').set(auth(other)).expect(200)).body.items.map((n: { title?: string }) => n.title ?? '').join('')).not.toContain('Priya');
+    });
+
+    it('with a real model: chats without any tools, and the emergency number is still offered for a safety concern', async () => {
+      const ai = ctx.app.get(AiAdapter);
+      const sim = jest.spyOn(ai, 'simulated', 'get').mockReturnValue(false);
+      const complete = jest.spyOn(ai, 'complete').mockResolvedValue({ text: 'I am glad to hear it! Tell me more about your day.', model: 'fake', simulated: false });
+      try {
+        const r = await ctx.http.post('/v1/voice/companion').set(auth(u)).send({ message: 'Had a lovely lunch today.' }).expect(200);
+        expect(r.body).toMatchObject({ reply: 'I am glad to hear it! Tell me more about your day.', concern: false });
+        const [system] = complete.mock.calls[0];
+        expect(system).toContain('not a friend');
+        expect(system).toContain('112'); // India's emergency number, for this test user
+      } finally {
+        sim.mockRestore();
+        complete.mockRestore();
+      }
+    });
   });
 });

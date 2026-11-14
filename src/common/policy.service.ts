@@ -21,7 +21,8 @@ export type GrantScope =
   | 'checkins.view'
   | 'checkins.alerts'
   | 'help.alerts'
-  | 'help.location';
+  | 'help.location'
+  | 'checkins.suggest';
 
 export const ALL_SCOPES: GrantScope[] = [
   'tasks.view',
@@ -31,6 +32,7 @@ export const ALL_SCOPES: GrantScope[] = [
   'checkins.alerts',
   'help.alerts',
   'help.location',
+  'checkins.suggest',
 ];
 
 /**

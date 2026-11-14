@@ -81,8 +81,12 @@ export const grantScope = pgEnum('grant_scope', [
   'checkins.alerts',
   'help.alerts',
   'help.location',
+  // Lets a caregiver PROPOSE a check-in or medicine schedule; the parent must still approve it. Never grants
+  // the power to change the schedule directly — that stays the parent's alone.
+  'checkins.suggest',
 ]);
 export const grantStatus = pgEnum('grant_status', ['pending_cooloff', 'active', 'revoked', 'expired']);
+export const careSuggestionStatus = pgEnum('care_suggestion_status', ['pending', 'approved', 'declined', 'withdrawn']);
 export const checkInKind = pgEnum('check_in_kind', ['daily', 'weekly', 'one_off', 'visit_confirmation', 'assistance_confirmation']);
 export const checkInEventState = pgEnum('check_in_event_state', [
   'pending',

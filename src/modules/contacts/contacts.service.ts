@@ -21,6 +21,7 @@ export const SCOPE_LABELS: Record<GrantScope, string> = {
   'checkins.alerts': 'get alerts when you miss a check-in',
   'help.alerts': 'get alerts when you press Get help',
   'help.location': 'see your location when you press Get help (24 hours)',
+  'checkins.suggest': 'propose check-in or medicine times for you to approve',
 };
 
 @Injectable()

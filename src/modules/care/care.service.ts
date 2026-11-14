@@ -416,4 +416,29 @@ export class CareService {
     });
     return this.suggestionView(updated);
   }
+
+  // ------------------------------------------------------------------ companion chat
+  /**
+   * The companion chat noticed something worth family knowing about (a loneliness, wellbeing or distress
+   * mention). Tells the same people who would already hear about a missed check-in — never anyone new — and
+   * never quotes what was actually said, only the general kind of thing it was.
+   */
+  async flagWellbeingConcern(actor: Actor, kind: 'lonely' | 'unwell' | 'distress') {
+    const recipients = await this.policy.granteesOf(actor.userId, 'checkins.alerts');
+    if (!recipients.length) return 0;
+    const name = await this.names.displayName(actor.userId);
+    const phrase = kind === 'lonely' ? 'mentioned feeling a bit lonely' : kind === 'unwell' ? 'mentioned not feeling well' : 'said something that sounded like they were struggling';
+    for (const r of recipients) {
+      await this.notifications.notify({
+        userId: r,
+        category: 'checkins',
+        template: 'companion_wellbeing_note',
+        title: `${name} ${phrase} while chatting with the companion assistant`,
+        body: 'This is not a medical alert — just something you may want to check in about yourself.',
+        data: { type: 'wellbeing_note', userId: actor.userId },
+        channels: ['push'],
+      });
+    }
+    return recipients.length;
+  }
 }

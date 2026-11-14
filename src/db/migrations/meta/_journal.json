@@ -64,6 +64,13 @@
       "when": 1794653753091,
       "tag": "0008_care_suggestions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794654574851,
+      "tag": "0009_companion_chat",
+      "breakpoints": true
     }
   ]
 }

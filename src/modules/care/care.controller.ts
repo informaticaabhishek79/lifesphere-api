@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateIf, ValidateNested } from 'class-validator';
@@ -37,6 +37,15 @@ class CareModeDto {
   @ApiPropertyOptional({ default: true }) @IsOptional() @IsBoolean() focus?: boolean;
 }
 
+class ProposeSuggestionDto {
+  @ApiProperty({ description: 'The person you are suggesting this for. They must have given you "propose check-in or medicine times" in Sharing.' })
+  @IsUUID()
+  targetUserId: string;
+  @ApiProperty({ enum: ['add_medicine'], description: 'Only medicine reminders can be proposed for now.' }) @IsIn(['add_medicine']) kind: 'add_medicine';
+  @ApiProperty({ example: 'BP tablet' }) @IsString() @MinLength(1) @MaxLength(60) name: string;
+  @ApiProperty({ example: ['08:00', '20:00'] }) @Matches(HHMM, { each: true }) @ArrayMinSize(1) @ArrayMaxSize(4) times: string[];
+}
+
 @ApiTags('care')
 @Controller({ path: 'care', version: '1' })
 export class CareController {
@@ -64,5 +73,30 @@ export class CareController {
   @HttpCode(200)
   mode(@CurrentActor() actor: Actor, @Body() dto: CareModeDto) {
     return this.svc.setMode(actor, dto.mode, dto.focus ?? true);
+  }
+
+  /** A caregiver proposes adding a medicine reminder for someone who granted them checkins.suggest. */
+  @Post('suggestions')
+  propose(@CurrentActor() actor: Actor, @Body() dto: ProposeSuggestionDto) {
+    return this.svc.propose(actor, dto);
+  }
+
+  /** Suggestions about me (to decide) and suggestions I made (to track). */
+  @Get('suggestions')
+  suggestions(@CurrentActor() actor: Actor) {
+    return this.svc.suggestions(actor);
+  }
+
+  /** Only the person a suggestion is about may approve it — this is what actually creates the reminder. */
+  @Post('suggestions/:id/approve')
+  @HttpCode(200)
+  approve(@CurrentActor() actor: Actor, @Param('id') id: string) {
+    return this.svc.decide(actor, id, 'approved');
+  }
+
+  @Post('suggestions/:id/decline')
+  @HttpCode(200)
+  decline(@CurrentActor() actor: Actor, @Param('id') id: string) {
+    return this.svc.decide(actor, id, 'declined');
   }
 }

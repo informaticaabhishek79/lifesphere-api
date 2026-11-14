@@ -166,6 +166,44 @@ describe('Parent care: a son invites his mother, she shares back, sets up her da
     expect(view[0].status).not.toBe('not_set_up');
   });
 
+  it('a caregiver may propose a new medicine reminder, but only the parent can approve it; declining changes nothing', async () => {
+    // Mother and son are already trusted contacts from an earlier test, so this shares one more scope with him directly.
+    await ctx.http.post('/v1/grants').set(auth(mother)).send({ granteeId: son.id, scopes: ['checkins.suggest'] }).expect(201);
+    await expireCooloff(ctx);
+    await ctx.app.get(ContactsService).activateDueGrants();
+    // No grant, no proposal.
+    await ctx.http.post('/v1/care/suggestions').set(auth(stranger)).send({ targetUserId: mother.id, kind: 'add_medicine', name: 'Vitamin D', times: ['09:00'] }).expect(404);
+
+    const before = (await ctx.http.get('/v1/check-ins/schedules').set(auth(mother)).expect(200)).body.length;
+    const proposed = await ctx.http.post('/v1/care/suggestions').set(auth(son)).send({ targetUserId: mother.id, kind: 'add_medicine', name: 'Vitamin D', times: ['09:00'] }).expect(201);
+    expect(proposed.body.status).toBe('pending');
+    // Proposing never touches her schedule by itself.
+    expect((await ctx.http.get('/v1/check-ins/schedules').set(auth(mother)).expect(200)).body).toHaveLength(before);
+    const forMe = (await ctx.http.get('/v1/care/suggestions').set(auth(mother)).expect(200)).body.forMe;
+    expect(forMe).toHaveLength(1);
+    expect(forMe[0].proposedByName).toBe('Arjun');
+    const byMe = (await ctx.http.get('/v1/care/suggestions').set(auth(son)).expect(200)).body.byMe;
+    expect(byMe[0].targetName).toBe('Kamla');
+
+    // She declines: still nothing added.
+    await ctx.http.post(`/v1/care/suggestions/${proposed.body.id}/decline`).set(auth(mother)).expect(200);
+    expect((await ctx.http.get('/v1/check-ins/schedules').set(auth(mother)).expect(200)).body).toHaveLength(before);
+
+    // He proposes again; he cannot approve his own suggestion — only she can.
+    const again = await ctx.http
+      .post('/v1/care/suggestions')
+      .set(auth(son))
+      .send({ targetUserId: mother.id, kind: 'add_medicine', name: 'Vitamin D', times: ['09:00', '21:00'] })
+      .expect(201);
+    await ctx.http.post(`/v1/care/suggestions/${again.body.id}/approve`).set(auth(son)).expect(404);
+    await ctx.http.post(`/v1/care/suggestions/${again.body.id}/approve`).set(auth(mother)).expect(200);
+    // Approving twice does nothing the second time.
+    await ctx.http.post(`/v1/care/suggestions/${again.body.id}/approve`).set(auth(mother)).expect(422);
+    const after = (await ctx.http.get('/v1/check-ins/schedules').set(auth(mother)).expect(200)).body;
+    expect(after).toHaveLength(before + 2);
+    expect(after.filter((s: { label: string }) => s.label === 'Vitamin D')).toHaveLength(2);
+  });
+
   it('the voice assistant answers "how is Maa" from what she shared', async () => {
     const r = await ctx.http.post('/v1/voice/ask').set(auth(son)).send({ question: 'Did mummy take her medicine?' }).expect(200);
     expect(r.body.usedTools).toEqual(['check_ins']);

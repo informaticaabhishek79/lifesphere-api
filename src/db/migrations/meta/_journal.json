@@ -57,6 +57,13 @@
       "when": 1792470819137,
       "tag": "0007_smart_inbox",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794653753091,
+      "tag": "0008_care_suggestions",
+      "breakpoints": true
     }
   ]
 }

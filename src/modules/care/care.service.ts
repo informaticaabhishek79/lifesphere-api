@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { Actor } from '../../common/auth-context';
-import { badRequest } from '../../common/errors';
+import { badRequest, notFound, unprocessable } from '../../common/errors';
 import { GrantScope, PolicyService } from '../../common/policy.service';
 import { addDays, localParts, zonedTimeToUtc } from '../../common/time';
 import { Database, DB } from '../../db/db';
 import {
   accessGrants,
   calendarEvents,
+  careSuggestions,
   checkInEvents,
   checkInSchedules,
   contactInvitations,
@@ -20,10 +21,20 @@ import {
 } from '../../db/schema';
 import { CheckinsService } from '../checkins/checkins.service';
 import { HelpService } from '../help/help.service';
+import { InviteHelper } from '../households/households.service';
 import { MeService } from '../me/me.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /** What a caregiver may be given. Each one is still an ordinary, revocable grant with cooling-off. */
-export const CARE_SCOPES: GrantScope[] = ['checkins.view', 'checkins.alerts', 'help.alerts', 'help.location', 'calendar.view'];
+export const CARE_SCOPES: GrantScope[] = ['checkins.view', 'checkins.alerts', 'help.alerts', 'help.location', 'calendar.view', 'checkins.suggest'];
+
+export type SuggestionKind = 'add_medicine';
+export interface ProposeSuggestionInput {
+  targetUserId: string;
+  kind: SuggestionKind;
+  name: string;
+  times: string[];
+}
 
 /** Features a focused home hides. Nothing is deleted; they come back from Settings. */
 export const FOCUS_HIDDEN: Record<'caregiver' | 'cared_for', string[]> = {
@@ -70,6 +81,8 @@ export class CareService {
     private readonly checkins: CheckinsService,
     private readonly help: HelpService,
     private readonly me: MeService,
+    private readonly notifications: NotificationsService,
+    private readonly names: InviteHelper,
   ) {}
 
   private async dayRange(userId: string) {
@@ -321,5 +334,86 @@ export class CareService {
     // Family care is what both care modes are built on.
     if (mode !== 'standard') final = final.filter((f) => f !== 'familycare');
     return this.me.updatePreferences(actor, { homeMode: mode, disabledFeatures: final });
+  }
+
+  // ------------------------------------------------------------------ suggestions
+  private suggestionView(row: typeof careSuggestions.$inferSelect) {
+    return { id: row.id, targetUserId: row.targetUserId, proposedBy: row.proposedBy, kind: row.kind, payload: row.payload as { name: string; times: string[] }, status: row.status, createdAt: row.createdAt, decidedAt: row.decidedAt };
+  }
+
+  /**
+   * A caregiver proposes adding a medicine reminder for someone who granted them checkins.suggest. Nothing about
+   * the parent's schedule changes here — it only takes effect once the parent reviews it in `decide`.
+   */
+  async propose(actor: Actor, dto: ProposeSuggestionInput) {
+    if (actor.userId === dto.targetUserId) throw badRequest('Propose this for someone else, not yourself', 'self_suggestion');
+    await this.policy.requireGrant(actor.userId, dto.targetUserId, 'checkins.suggest', 'Person');
+    if (dto.kind !== 'add_medicine') throw badRequest(`Unsupported suggestion kind ${dto.kind}`, 'unsupported_kind');
+    const name = dto.name.trim();
+    const times = [...new Set(dto.times)];
+    if (!name || !times.length) throw badRequest('A medicine needs a name and at least one time', 'invalid_payload');
+    const [row] = await this.db
+      .insert(careSuggestions)
+      .values({ targetUserId: dto.targetUserId, proposedBy: actor.userId, kind: dto.kind, payload: { name, times } })
+      .returning();
+    const proposerName = await this.names.displayName(actor.userId);
+    await this.notifications.notify({
+      userId: dto.targetUserId,
+      category: 'checkins',
+      template: 'care_suggestion_proposed',
+      title: `${proposerName} suggests adding "${name}" to your reminders`,
+      body: 'Nothing changes until you approve it.',
+      data: { type: 'care_suggestion', id: row.id },
+      channels: ['push'],
+    });
+    return this.suggestionView(row);
+  }
+
+  /** Suggestions about me (to decide) and suggestions I made (to track), each with the other person's name. */
+  async suggestions(actor: Actor) {
+    const rows = await this.db
+      .select()
+      .from(careSuggestions)
+      .where(or(eq(careSuggestions.targetUserId, actor.userId), eq(careSuggestions.proposedBy, actor.userId)))
+      .orderBy(desc(careSuggestions.createdAt))
+      .limit(100);
+    const ids = [...new Set(rows.flatMap((r) => [r.targetUserId, r.proposedBy]))];
+    const names = ids.length ? await this.db.select({ id: userProfiles.userId, n: userProfiles.displayName }).from(userProfiles).where(inArray(userProfiles.userId, ids)) : [];
+    const nameOf = (id: string) => names.find((n) => n.id === id)?.n ?? null;
+    return {
+      forMe: rows.filter((r) => r.targetUserId === actor.userId).map((r) => ({ ...this.suggestionView(r), proposedByName: nameOf(r.proposedBy) })),
+      byMe: rows.filter((r) => r.proposedBy === actor.userId).map((r) => ({ ...this.suggestionView(r), targetName: nameOf(r.targetUserId) })),
+    };
+  }
+
+  /** Only the person a suggestion is about may decide it — never the caregiver who proposed it, never anyone else. */
+  async decide(actor: Actor, id: string, decision: 'approved' | 'declined') {
+    const [row] = await this.db.select().from(careSuggestions).where(eq(careSuggestions.id, id));
+    if (!row || row.targetUserId !== actor.userId) throw notFound('Suggestion');
+    if (row.status !== 'pending') throw unprocessable('This suggestion was already decided', 'already_decided');
+    let resultScheduleId: string | null = null;
+    if (decision === 'approved' && row.kind === 'add_medicine') {
+      const payload = row.payload as { name: string; times: string[] };
+      // Same shape as care/setup: one daily schedule per time, alerts off until the parent turns them on themselves.
+      for (const time of payload.times) {
+        const created = await this.checkins.create(actor, { label: payload.name, kind: 'daily', purpose: 'medicine', timeLocal: time, reminderAfterMinutes: 20, graceMinutes: 40, escalate: false });
+        resultScheduleId ??= created?.id ?? null;
+      }
+    }
+    const [updated] = await this.db
+      .update(careSuggestions)
+      .set({ status: decision, decidedBy: actor.userId, decidedAt: new Date(), resultScheduleId })
+      .where(eq(careSuggestions.id, id))
+      .returning();
+    const deciderName = await this.names.displayName(actor.userId);
+    await this.notifications.notify({
+      userId: row.proposedBy,
+      category: 'checkins',
+      template: 'care_suggestion_decided',
+      title: decision === 'approved' ? `${deciderName} approved your suggestion` : `${deciderName} declined your suggestion`,
+      data: { type: 'care_suggestion', id },
+      channels: ['push'],
+    });
+    return this.suggestionView(updated);
   }
 }

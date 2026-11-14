@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -14,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, ts, updatedAt } from './_columns';
 import {
+  careSuggestionStatus,
   checkInEventState,
   checkInKind,
   grantScope,
@@ -150,6 +152,34 @@ export const checkInEscalationContacts = pgTable(
     position: smallint('position').notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.scheduleId, t.contactUserId] })],
+);
+
+/**
+ * A caregiver's proposed change to a parent's check-in or medicine schedule. Proposing never changes anything by
+ * itself — it only becomes real when the parent (never anyone else) approves it. "kind" is a small, open-ended
+ * string rather than a Postgres enum so new proposal kinds don't need a schema migration to add.
+ */
+export const careSuggestions = pgTable(
+  'care_suggestions',
+  {
+    id: id(),
+    targetUserId: uuid('target_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    proposedBy: uuid('proposed_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 40 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    status: careSuggestionStatus('status').notNull().default('pending'),
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decidedAt: ts('decided_at'),
+    /** Set when approving created something (e.g. a check-in schedule), so it can be traced or undone. */
+    resultScheduleId: uuid('result_schedule_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('care_suggestion_target_idx').on(t.targetUserId, t.status), index('care_suggestion_by_idx').on(t.proposedBy, t.status)],
 );
 
 export const checkInEvents = pgTable(
